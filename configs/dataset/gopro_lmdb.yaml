@@ -1,30 +1,3 @@
-hydra:
-  run:
-    dir: .
-  output_subdir: null
-  job:
-    chdir: false
-
-dataset:
-  src_root: ../dataset/GOPRO_Large
-  dst_root: data/GoPro/raw
-
-  splits:
-    - train
-    - test
-
-  modes:
-    - blur
-    - sharp
-
-  ignore:
-    - blur_gamma
-
-  image_exts:
-    - .png
-    - .jpg
-    - .jpeg
-
-  download: false
-  copy: true
-
+src_root: ${hydra:runtime.cwd}/data/GoPro/raw
+dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
+patch_size: [256, 256]

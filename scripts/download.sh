@@ -1,1 +1,1 @@
-python ../src/dataset/download.py hydra=dataset
+python src/dataset/download.py

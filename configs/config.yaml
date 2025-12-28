@@ -1,9 +1,12 @@
 defaults:
-  - dataset: lmdb
+  - _self_
+  - dataset: gopro_lmdb
   - model: model
   - trainer: default
 
+seed: 42
+
 hydra:
   run:
-    dir: outputs/${model.name}/lr=${optimizer.lr}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${model.name}/${now:%Y-%m-%d_%H-%M-%S}
 

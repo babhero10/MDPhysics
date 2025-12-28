@@ -1,0 +1,27 @@
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false
+
+src_root: ../dataset/GOPRO_Large
+dst_root: data/GoPro/raw
+
+val_split: 0.1
+seed: 42
+
+splits:
+  - train
+  - test
+
+modes:
+  - blur
+  - sharp
+
+ignore:
+  - blur_gamma
+
+download: false
+copy: true
+
