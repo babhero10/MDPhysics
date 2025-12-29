@@ -1,0 +1,19 @@
+lr: 1e-4
+weight_decay: 0.01
+epochs: 100
+batch_size: 16
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: ${train.lr}
+  weight_decay: ${train.weight_decay}
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  T_max: ${train.epochs}
+
+checkpoint:
+  dir: checkpoints
+  patience: 15
+  min_delta: 1e-3
+  monitor: psnr
+  mode: max
+

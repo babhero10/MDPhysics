@@ -155,14 +155,13 @@ class BlurDataset(Dataset):
         pad_w = max(pw - w, 0)
 
         if pad_h > 0 or pad_w > 0:
-            # F.pad uses (left, right, top, bottom)
-            img = torch.nn.functional.F.pad(img, (0, pad_w, 0, pad_h), mode='reflect')
+            img = torch.nn.functional.F.pad(img, (0, pad_w, 0, pad_h), mode="reflect")
             _, h, w = img.shape
 
         # Random crop
         i = torch.randint(0, h - ph + 1, (1,)).item()
         j = torch.randint(0, w - pw + 1, (1,)).item()
-        patch = img[:, i:i + ph, j:j + pw]
+        patch = img[:, i : i + ph, j : j + pw]
         return patch
 
     def __check_downloaded(self) -> bool:
