@@ -10,7 +10,7 @@ class Logger:
         if cls._instance is None:
             cls._instance = super(Logger, cls).__new__(cls)
 
-            log_dir = Path.cwd() / cfg_logger.log_dir
+            log_dir = Path(cfg_logger.log_dir)
             log_dir.mkdir(exist_ok=True)
 
             # Python logger
@@ -29,7 +29,7 @@ class Logger:
             cls._instance.logger.addHandler(console_handler)
 
             # TensorBoard SummaryWriter
-            cls._instance.writer = SummaryWriter(log_dir=log_dir)
+            cls._instance.writer = SummaryWriter(log_dir=cfg_logger.tensorboard_dir)
 
         return cls._instance
 

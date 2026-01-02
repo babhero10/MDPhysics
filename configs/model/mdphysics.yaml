@@ -1,0 +1,11 @@
+name: "MDPhysics"
+arch:
+  _target_: model.MDPhysics.mdphysics.MDPhysics
+  inp_channels: 3
+  out_channels: 3
+  dim: 48
+  num_blocks: [6, 6, 12]
+  num_refinement_blocks: 4
+  ffn_expansion_factor: 3
+  bias: False
+  img_size: 256

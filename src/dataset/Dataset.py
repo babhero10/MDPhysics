@@ -55,7 +55,7 @@ class BlurDataset(Dataset):
         self.__split = split
 
         self.transform = None
-        if "augmentations" in dataset_cfg and split == "train":
+        if split == "train" and "augmentations" in dataset_cfg:
             self.transform = hydra.utils.instantiate(dataset_cfg.augmentations)
 
         if not self.__check_downloaded():

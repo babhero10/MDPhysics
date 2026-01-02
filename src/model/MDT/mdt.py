@@ -7,7 +7,6 @@ from torchvision.ops import DeformConv2d
 
 from timm.layers import DropPath, to_2tuple, trunc_normal_
 from .polar_utils import get_sample_params_from_subdiv, get_sample_locations
-from .physics_mdm import PhysicsInformedMDM
 import numpy as np
 
 pi = 3.141592653589793
@@ -805,9 +804,7 @@ class MDT(nn.Module):
         theta = torch.atan2(cartesian[1], cartesian[0])
         self.patch_norm = True
 
-        self.patch_embed0 = PhysicsInformedMDM(
-            inp_channels, dim, img_size, img_size, focal_length=100.0
-        )
+        self.patch_embed0 = OverlapPatchEmbed(inp_channels, dim)
         self.patch_embed = PatchEmbed(
             img_size=img_size,
             distortion_model=distortion_model,
@@ -982,13 +979,10 @@ class MDT(nn.Module):
 
     def forward(self, inp_img, dist):
         # 1. Polar Embeddings
-        inp_enc_polar, D_s, theta_max = self.patch_embed(inp_img, dist)
+        _, D_s, theta_max = self.patch_embed(inp_img, dist)
 
-        # 2. Physics Embeddings (Fixes overwrite bug)
-        inp_enc_physics, inv_Z, velocity = self.patch_embed0(inp_img)
-
-        # 3. Fuse Embeddings (Add them)
-        inp_enc_level1 = inp_enc_polar + inp_enc_physics
+        # 2. Overlap Embeddings
+        inp_enc_level1 = self.patch_embed0(inp_img)
 
         if self.ape:
             inp_enc_level1 = inp_enc_level1 + self.absolute_pos_embed
@@ -1040,4 +1034,4 @@ class MDT(nn.Module):
         # Output
         final_out = self.output(out_refine[0]) + inp_img
 
-        return [final_out, inv_Z, velocity]
+        return [final_out]

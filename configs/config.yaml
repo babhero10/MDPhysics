@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - dataset: gopro_lmdb
-  - model: model
+  - model: mdt
   - metrics: metrics
   - train: default
 
