@@ -29,11 +29,7 @@ class LMDBDataset:
             )
         else:
             self.__env = lmdb.open(
-                self.__path,
-                readonly=True,
-                lock=False,
-                readahead=False,
-                meminit=False
+                self.__path, readonly=True, lock=False, readahead=False, meminit=False
             )
 
     def get_env(self):
@@ -97,10 +93,7 @@ class BlurDataset(Dataset):
 
             if idx == 0:
                 ref_shape = sharp.shape
-                txn.put(
-                    b"__shape__",
-                    np.array(sharp.shape, dtype=np.int64).tobytes()
-                )
+                txn.put(b"__shape__", np.array(sharp.shape, dtype=np.int64).tobytes())
             elif sharp.shape != ref_shape:
                 txn.put(
                     f"{idx}_shape".encode(),
@@ -140,10 +133,10 @@ class BlurDataset(Dataset):
                 txn.get(f"{idx}_sharp".encode()), dtype=np.uint8
             ).reshape(shape)
 
-        if self.__split == 'train' and self.transform:
+        if self.__split == "train" and self.transform:
             augmented = self.transform(image=blur, sharp=sharp)
-            blur = augmented['image']
-            sharp = augmented['sharp']
+            blur = augmented["image"]
+            sharp = augmented["sharp"]
 
         # Convert to float
         blur = torch.tensor(np.transpose(blur, (2, 0, 1))).float().div_(255.0)

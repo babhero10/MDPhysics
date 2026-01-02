@@ -2,7 +2,8 @@ defaults:
   - _self_
   - dataset: gopro_lmdb
   - model: mdt
-  - metrics: metrics
+  - metrics: default
+  - logger: default
   - train: default
 
 seed: 42

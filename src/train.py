@@ -10,6 +10,7 @@ from utils.training import (
     build_scheduler,
     build_metrics,
     CheckpointManager,
+    log_validation_visualizations,
 )
 
 from utils.logger import Logger
@@ -18,6 +19,8 @@ from utils.logger import Logger
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig):
     set_seed(cfg.seed)
+    # Initialize Logger
+    _ = Logger(cfg.logger)
     logger = Logger.get_logger()
     writer = Logger.get_writer()
 
@@ -46,6 +49,11 @@ def main(cfg: DictConfig):
 
     device = torch.device(cfg.device)
 
+    # Fixed batch for visualization
+    fixed_batch = next(iter(val_loader))
+    fixed_blur = fixed_batch["blur"].to(device)[:4]  # Take first 4 images
+    fixed_sharp = fixed_batch["sharp"].to(device)[:4]
+
     # Instantiate model from 'arch' sub-config
     model = hydra.utils.instantiate(cfg.model.arch).to(device)
 
@@ -62,10 +70,10 @@ def main(cfg: DictConfig):
     metrics = build_metrics(cfg.metrics, device)
 
     checkpoint_mgr = CheckpointManager(
-        save_dir=cfg.checkpoint.dir,
-        mode=cfg.checkpoint.mode,
-        patience=cfg.checkpoint.patience,
-        min_delta=cfg.checkpoint.min_delta,
+        save_dir=cfg.train.checkpoint.dir,
+        mode=cfg.train.checkpoint.mode,
+        patience=cfg.train.checkpoint.patience,
+        min_delta=cfg.train.checkpoint.min_delta,
     )
 
     logger.info("Training Started!")
@@ -75,20 +83,54 @@ def main(cfg: DictConfig):
             model, train_loader, optimizer, criterion, device, metrics
         )
 
-        val_loss, val_metrics = validate(
-            model,
-            val_loader,
-            criterion,
-            device,
-            metrics
+        val_loss, val_metrics = validate(model, val_loader, criterion, device, metrics)
+
+        # Logging to TensorBoard
+        writer.add_scalars(
+            "metrics/loss", {"train": train_loss, "val": val_loss}, epoch
+        )
+        for metric_name, train_val in train_metrics.items():
+            val_val = val_metrics.get(metric_name)
+            if val_val is not None:
+                writer.add_scalars(
+                    f"metrics/{metric_name}",
+                    {"train": train_val, "val": val_val},
+                    epoch,
+                )
+
+        # Log to console
+        metrics_str = ", ".join(
+            [
+                f"train_{k}={v:.4f}, val_{k}={val_metrics[k]:.4f}"
+                for k, v in train_metrics.items()
+            ]
+        )
+        logger.info(
+            f"Epoch {epoch}: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}, {metrics_str}"
         )
 
         # step scheduler if needed
         scheduler.step()
 
-        current_score = val_metrics[cfg.checkpoint.monitor]
-        if checkpoint_mgr.step(model, current_score, epoch):
+        current_score = val_metrics[cfg.train.checkpoint.monitor]
+        stop_training, is_saved = checkpoint_mgr.step(model, current_score, epoch)
+
+        if is_saved:
+            logger.info(f"New best model saved! Score: {current_score:.4f}")
+
+            # Log visualizations
+            log_validation_visualizations(
+                model, writer, epoch, fixed_blur, fixed_sharp, metrics, device
+            )
+
+        if stop_training:
+            logger.warning(f"Early stopping triggered at epoch {epoch}")
             break
+
+    logger.info(
+        f"Training finished. Best model saved at epoch {checkpoint_mgr.best_epoch} with score {checkpoint_mgr.best_score:.4f}"
+    )
+    logger.info(f"Best model path: {checkpoint_mgr.best_path}")
 
 
 if __name__ == "__main__":
