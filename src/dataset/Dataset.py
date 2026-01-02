@@ -5,6 +5,7 @@ import numpy as np
 import lmdb
 from tqdm import tqdm
 from torch.utils.data import Dataset
+import hydra
 
 
 class LMDBDataset:
@@ -28,7 +29,11 @@ class LMDBDataset:
             )
         else:
             self.__env = lmdb.open(
-                self.__path, readonly=True, lock=False, readahead=False, meminit=False
+                self.__path,
+                readonly=True,
+                lock=False,
+                readahead=False,
+                meminit=False
             )
 
     def get_env(self):
@@ -49,6 +54,10 @@ class BlurDataset(Dataset):
         self.__patch_size = dataset_cfg.patch_size
         self.__split = split
 
+        self.transform = None
+        if "augmentations" in dataset_cfg and split == "train":
+            self.transform = hydra.utils.instantiate(dataset_cfg.augmentations)
+
         if not self.__check_downloaded():
             raise RuntimeError("Dataset not downloaded or corrupted")
 
@@ -58,7 +67,6 @@ class BlurDataset(Dataset):
     def __load_image(self, path: Path) -> np.ndarray:
         img = Image.open(path).convert("RGB")
         img = np.asarray(img, dtype=np.uint8)
-        img = np.transpose(img, (2, 0, 1))
         return img
 
     def __process(self):
@@ -89,7 +97,10 @@ class BlurDataset(Dataset):
 
             if idx == 0:
                 ref_shape = sharp.shape
-                txn.put(b"__shape__", np.array(sharp.shape, dtype=np.int64).tobytes())
+                txn.put(
+                    b"__shape__",
+                    np.array(sharp.shape, dtype=np.int64).tobytes()
+                )
             elif sharp.shape != ref_shape:
                 txn.put(
                     f"{idx}_shape".encode(),
@@ -129,12 +140,15 @@ class BlurDataset(Dataset):
                 txn.get(f"{idx}_sharp".encode()), dtype=np.uint8
             ).reshape(shape)
 
-        # Convert to float
-        blur = torch.tensor(blur).float().div_(255.0)
-        sharp = torch.tensor(sharp).float().div_(255.0)
+        if self.__split == 'train' and self.transform:
+            augmented = self.transform(image=blur, sharp=sharp)
+            blur = augmented['image']
+            sharp = augmented['sharp']
 
-        blur = self.__crop_patch(blur)
-        sharp = self.__crop_patch(sharp)
+        # Convert to float
+        blur = torch.tensor(np.transpose(blur, (2, 0, 1))).float().div_(255.0)
+        sharp = torch.tensor(np.transpose(sharp, (2, 0, 1))).float().div_(255.0)
+
         return blur, sharp
 
     def __len__(self):
@@ -145,24 +159,6 @@ class BlurDataset(Dataset):
     def __del__(self):
         if self.__lmdb_env.get_env() is not None:
             self.__lmdb_env.close()
-
-    def __crop_patch(self, img: torch.Tensor):
-        c, h, w = img.shape
-        ph, pw = self.__patch_size
-
-        # Pad if image smaller than patch
-        pad_h = max(ph - h, 0)
-        pad_w = max(pw - w, 0)
-
-        if pad_h > 0 or pad_w > 0:
-            img = torch.nn.functional.F.pad(img, (0, pad_w, 0, pad_h), mode="reflect")
-            _, h, w = img.shape
-
-        # Random crop
-        i = torch.randint(0, h - ph + 1, (1,)).item()
-        j = torch.randint(0, w - pw + 1, (1,)).item()
-        patch = img[:, i : i + ph, j : j + pw]
-        return patch
 
     def __check_downloaded(self) -> bool:
         gopro_root = self.__raw_path
