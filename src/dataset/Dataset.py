@@ -142,7 +142,7 @@ class BlurDataset(Dataset):
         blur = torch.tensor(np.transpose(blur, (2, 0, 1))).float().div_(255.0)
         sharp = torch.tensor(np.transpose(sharp, (2, 0, 1))).float().div_(255.0)
 
-        return blur, sharp
+        return {"blur": blur, "sharp": sharp}
 
     def __len__(self):
         self.__ensure_env()

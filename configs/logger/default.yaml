@@ -1,4 +1,4 @@
-logger_name: "MDPhysics"
+logger_name: "${model.name}"
 logger_filename: "log.out"
 log_dir: "${hydra:runtime.output_dir}/logs"
 logger_level: 0

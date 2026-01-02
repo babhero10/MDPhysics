@@ -1,5 +1,5 @@
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from dataset.Dataset import BlurDataset
 from utils.seed import set_seed
 import torch
@@ -24,6 +24,8 @@ def main(cfg: DictConfig):
     logger = Logger.get_logger()
     writer = Logger.get_writer()
 
+    logger.info("Configuration:\n" + OmegaConf.to_yaml(cfg))
+
     train_dataset = BlurDataset(cfg.dataset, "train")
     val_dataset = BlurDataset(cfg.dataset, "val")
 
@@ -31,28 +33,28 @@ def main(cfg: DictConfig):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=16,
+        batch_size=cfg.train.batch_size,
         shuffle=True,
         pin_memory=True,
         persistent_workers=True,
-        num_workers=8,
+        num_workers=cfg.dataset.num_workers,
     )
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=16,
+        batch_size=cfg.train.batch_size,
         shuffle=False,
         pin_memory=True,
         persistent_workers=True,
-        num_workers=8,
+        num_workers=cfg.dataset.num_workers,
     )
 
     device = torch.device(cfg.device)
 
-    # Fixed batch for visualization
     fixed_batch = next(iter(val_loader))
-    fixed_blur = fixed_batch["blur"].to(device)[:4]  # Take first 4 images
-    fixed_sharp = fixed_batch["sharp"].to(device)[:4]
+
+    fixed_blur = fixed_batch['blur'].to(device)[:2]
+    fixed_sharp = fixed_batch['sharp'].to(device)[:2]
 
     # Instantiate model from 'arch' sub-config
     model = hydra.utils.instantiate(cfg.model.arch).to(device)

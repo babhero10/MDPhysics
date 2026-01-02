@@ -8,4 +8,4 @@ arch:
   num_refinement_blocks: 4
   ffn_expansion_factor: 3
   bias: False
-  img_size: 256
+  img_size: 64

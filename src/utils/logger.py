@@ -17,11 +17,14 @@ class Logger:
             cls._instance.logger = logging.getLogger(cfg_logger.logger_name)
             cls._instance.logger.setLevel(cfg_logger.logger_level)
             cls._instance.logger.handlers.clear()
+            cls._instance.logger.propagate = False
 
             file_handler = logging.FileHandler(log_dir / cfg_logger.logger_filename)
             console_handler = logging.StreamHandler()
 
-            formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
+            formatter = logging.Formatter(
+                "[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"
+            )
             file_handler.setFormatter(formatter)
             console_handler.setFormatter(formatter)
 

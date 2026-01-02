@@ -6,6 +6,7 @@ defaults:
   - logger: default
   - train: default
 
+device: "cuda:0"
 seed: 42
 
 hydra:

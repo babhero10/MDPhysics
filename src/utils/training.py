@@ -1,6 +1,8 @@
 import torch
 from hydra.utils import instantiate
 from pathlib import Path
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class CheckpointManager:
@@ -82,7 +84,7 @@ def build_scheduler(optimizer, cfg_sched):
 
 def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=None):
     model.train()
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
 
     for metric in (metrics or {}).values():
         metric.reset()
@@ -92,11 +94,12 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=N
     for batch in train_loader:
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
+        dist = torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4)).float().repeat([blur.size(0),1]).to(device)
 
         optimizer.zero_grad()
 
-        with torch.cuda.amp.autocast():  # FP16 forward
-            pred = model(blur)
+        with torch.amp.autocast('cuda'):  # FP16 forward
+            pred = model(blur, dist)
             pred = torch.clamp(pred, 0, 1)
             loss = criterion(pred, sharp)
 
@@ -118,10 +121,6 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=N
     avg_loss = running_loss / len(train_loader)
 
     return avg_loss, results
-
-
-import matplotlib.pyplot as plt
-import numpy as np
 
 
 def create_validation_figure(blur_imgs, sharp_imgs, pred_imgs, metrics_dict=None):
@@ -191,8 +190,9 @@ def log_validation_visualizations(
         # Ensure inputs are on device
         blur_imgs = blur_imgs.to(device)
         sharp_imgs = sharp_imgs.to(device)
+        dist = torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4)).float().repeat([blur_imgs.size(0),1]).to(device)
 
-        pred_imgs = model(blur_imgs)
+        pred_imgs = model(blur_imgs, dist)
         pred_imgs = torch.clamp(pred_imgs, 0, 1)
 
         # Loop over each image in the batch
@@ -230,9 +230,10 @@ def validate(model, val_loader, criterion, device, metrics=None):
     for batch in val_loader:
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
+        dist = torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4)).float().repeat([blur.size(0), 1]).to(device)
 
-        with torch.cuda.amp.autocast():
-            pred = model(blur)
+        with torch.amp.autocast('cuda'):
+            pred = model(blur, dist)
             pred = torch.clamp(pred, 0, 1)
             loss = criterion(pred, sharp)
 

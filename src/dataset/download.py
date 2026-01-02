@@ -50,7 +50,7 @@ def flatten_dataset(cfg):
         logger.error(f"The following path {src_root} doesn't exist")
         return False
 
-    dst_root.mkdir(exist_ok=True)
+    dst_root.mkdir(parents=True, exist_ok=True)
 
     for split in cfg.splits:
         src_split = src_root / split

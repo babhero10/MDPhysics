@@ -580,7 +580,7 @@ class OverlapPatchEmbed(nn.Module):
         # FIXED: Initialize conv layer here to ensure weights are learned.
         self.fan_regions = fan_regions
         self.polar_conv = nn.Conv2d(
-            in_c, embed_dim, kernel_size=3, stride=1, padding=1, bias=bias
+            in_c, 18, kernel_size=3, stride=1, padding=1, bias=bias
         )
 
     def forward(self, x):
@@ -1034,4 +1034,4 @@ class MDT(nn.Module):
         # Output
         final_out = self.output(out_refine[0]) + inp_img
 
-        return [final_out]
+        return final_out

@@ -1,22 +1,22 @@
 src_root: ${hydra:runtime.cwd}/data/GoPro/raw
 dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
-patch_size: [256, 256]
-num_workers: 4
+patch_size: [32, 32]
+num_workers: 1
 
 augmentations:
   _target_: albumentations.Compose
   transforms:
     # 1. Padding
     - _target_: albumentations.PadIfNeeded
-      min_height: ${dataset_cfg.patch_size[0]}
-      min_width: ${dataset_cfg.patch_size[1]}
+      min_height: ${dataset.patch_size[0]}
+      min_width: ${dataset.patch_size[1]}
       border_mode: 4  # 4 is cv2.BORDER_REFLECT_101
       p: 1.0
 
     # 2. Random Crop
     - _target_: albumentations.RandomCrop
-      height: ${dataset_cfg.patch_size[0]}
-      width: ${dataset_cfg.patch_size[1]}
+      height: ${dataset.patch_size[0]}
+      width: ${dataset.patch_size[1]}
       p: 1.0
     
     # 3. Flip
