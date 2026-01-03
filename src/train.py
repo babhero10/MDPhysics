@@ -42,7 +42,7 @@ def main(cfg: DictConfig):
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=cfg.train.batch_size,
+        batch_size=cfg.train.batch_size_val,
         shuffle=False,
         pin_memory=True,
         persistent_workers=True,
@@ -81,15 +81,17 @@ def main(cfg: DictConfig):
     logger.info("Training Started!")
 
     for epoch in range(cfg.train.epochs):
+        logger.info(f"Epoch {epoch + 1} | Training...")
         train_loss, train_metrics = train_one_epoch(
             model, train_loader, optimizer, criterion, device, metrics
         )
 
+        logger.info(f"Epoch {epoch + 1} | Validating...")
         val_loss, val_metrics = validate(model, val_loader, criterion, device, metrics)
 
         # Logging to TensorBoard
         writer.add_scalars(
-            "metrics/loss", {"train": train_loss, "val": val_loss}, epoch
+            "metrics/loss", {"train": train_loss, "val": val_loss}, epoch + 1
         )
         for metric_name, train_val in train_metrics.items():
             val_val = val_metrics.get(metric_name)
@@ -97,7 +99,7 @@ def main(cfg: DictConfig):
                 writer.add_scalars(
                     f"metrics/{metric_name}",
                     {"train": train_val, "val": val_val},
-                    epoch,
+                    epoch + 1,
                 )
 
         # Log to console
@@ -108,25 +110,25 @@ def main(cfg: DictConfig):
             ]
         )
         logger.info(
-            f"Epoch {epoch}: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}, {metrics_str}"
+            f"Epoch {epoch + 1}: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}, {metrics_str}"
         )
 
         # step scheduler if needed
         scheduler.step()
 
         current_score = val_metrics[cfg.train.checkpoint.monitor]
-        stop_training, is_saved = checkpoint_mgr.step(model, current_score, epoch)
+        stop_training, is_saved = checkpoint_mgr.step(model, current_score, epoch + 1)
 
         if is_saved:
             logger.info(f"New best model saved! Score: {current_score:.4f}")
 
             # Log visualizations
             log_validation_visualizations(
-                model, writer, epoch, fixed_blur, fixed_sharp, metrics, device
+                model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
             )
 
         if stop_training:
-            logger.warning(f"Early stopping triggered at epoch {epoch}")
+            logger.warning(f"Early stopping triggered at epoch {epoch + 1}")
             break
 
     logger.info(

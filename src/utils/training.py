@@ -1,8 +1,10 @@
 import torch
 from hydra.utils import instantiate
 from pathlib import Path
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.use("Agg")
 
 
 class CheckpointManager:

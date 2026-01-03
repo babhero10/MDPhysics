@@ -1,7 +1,8 @@
 lr: 1e-4
 weight_decay: 0.01
-epochs: 100
-batch_size: 4
+epochs: 1
+batch_size: 16
+batch_size_val: 16
 optimizer:
   _target_: torch.optim.AdamW
   lr: ${train.lr}
@@ -11,9 +12,9 @@ scheduler:
   T_max: ${train.epochs}
 
 checkpoint:
-  dir: checkpoints
-  patience: 15
+  dir: "${hydra:runtime.output_dir}/checkpoints"
+  patience: 5
   min_delta: 1e-3
-  monitor: psnr
+  monitor: ssim
   mode: max
 

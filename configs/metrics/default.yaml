@@ -6,7 +6,7 @@ ssim:
   _target_: torchmetrics.image.StructuralSimilarityIndexMeasure
   data_range: 1.0
 
-lpips:
-  _target_: torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity
-  net_type: vgg
+# lpips:
+#   _target_: torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity
+#   net_type: vgg
 
