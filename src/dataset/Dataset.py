@@ -51,8 +51,8 @@ class BlurDataset(Dataset):
         self.__split = split
 
         self.transform = None
-        # if split == "train" and "augmentations" in dataset_cfg:
-        self.transform = hydra.utils.instantiate(dataset_cfg.augmentations)
+        if split == "train" and "augmentations" in dataset_cfg:
+            self.transform = hydra.utils.instantiate(dataset_cfg.augmentations)
 
         if not self.__check_downloaded():
             raise RuntimeError("Dataset not downloaded or corrupted")
@@ -144,10 +144,10 @@ class BlurDataset(Dataset):
                 txn.get(f"{idx}_sharp".encode()), dtype=np.uint8
             ).reshape(shape)
 
-        # if self.__split == "train" and self.transform:
-        augmented = self.transform(image=blur, sharp=sharp)
-        blur = augmented["image"]
-        sharp = augmented["sharp"]
+        if self.__split == "train" and self.transform:
+            augmented = self.transform(image=blur, sharp=sharp)
+            blur = augmented["image"]
+            sharp = augmented["sharp"]
 
         # Convert to float
         blur = torch.tensor(np.transpose(blur, (2, 0, 1))).float().div_(255.0)
