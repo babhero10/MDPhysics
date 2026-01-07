@@ -978,6 +978,13 @@ class MDT(nn.Module):
         return x_pack
 
     def forward(self, inp_img, dist):
+        # 0. Pad if necessary
+        _, _, H_orig, W_orig = inp_img.shape
+        h_pad = (32 - H_orig % 32) % 32
+        w_pad = (32 - W_orig % 32) % 32
+        if h_pad != 0 or w_pad != 0:
+            inp_img = F.pad(inp_img, (0, w_pad, 0, h_pad), mode="reflect")
+
         # 1. Polar Embeddings
         _, D_s, theta_max = self.patch_embed(inp_img, dist)
 
@@ -1033,5 +1040,9 @@ class MDT(nn.Module):
 
         # Output
         final_out = self.output(out_refine[0]) + inp_img
+
+        # 3. Crop back to original size
+        if h_pad != 0 or w_pad != 0:
+            final_out = final_out[:, :, :H_orig, :W_orig]
 
         return final_out
