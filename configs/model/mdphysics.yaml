@@ -2,23 +2,23 @@ name: "MDPhysics"
 
 arch: 
   _target_: model.MDPhysics.DPT
+  cfg:
+    backbone:
+      name: "facebook/dinov3-vitb16-pretrain-lvd1689m"  # HuggingFace model identifier
+      freeze: true  # Freeze backbone weights
+      patch_size: 16  # DINOv3 uses 16x16 patches
+      embed_dim: 768  # Hidden dimension (auto-detected if available)
 
-  backbone:
-    name: "facebook/dinov3-vitb16-pretrain-lvd1689m"  # HuggingFace model identifier
-    freeze: true  # Freeze backbone weights
-    patch_size: 16  # DINOv3 uses 16x16 patches
-    embed_dim: 768  # Hidden dimension (auto-detected if available)
+    decoder:
+      features: 256  # Feature dimension for decoder
+      feature_layers: [6, 12, 18, 24]  # Layers to extract features from (for base: 12 layers total)
+      scales: [4, 8, 16, 32]  # Output scales for each reassembled feature
+      read_operation: "project"  # Options: "ignore", "add", "project"
+      use_bn: false  # Use batch normalization in fusion blocks
+      use_deconv: false  # Use transposed conv for upsampling
 
-  decoder:
-    features: 256  # Feature dimension for decoder
-    feature_layers: [6, 12, 18, 24]  # Layers to extract features from (for base: 12 layers total)
-    scales: [4, 8, 16, 32]  # Output scales for each reassembled feature
-    read_operation: "project"  # Options: "ignore", "add", "project"
-    use_bn: false  # Use batch normalization in fusion blocks
-    use_deconv: false  # Use transposed conv for upsampling
+    heads:
+      use_bn: false  # Use batch normalization in prediction heads
 
-  heads:
-    use_bn: false  # Use batch normalization in prediction heads
-
-  use_blurring_block: true
-  used_image_blurring_block: "pred" # or GT
+    use_blurring_block: true
+    used_image_blurring_block: "pred" # or GT

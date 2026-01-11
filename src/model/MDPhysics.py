@@ -610,8 +610,3 @@ class DPT(nn.Module):
                 outputs["blur_image"] = motion_blur(x, depth, motion)
 
         return outputs
-
-
-def build_dpt(cfg: DictConfig) -> DPT:
-    """Build DPT model from config."""
-    return DPT(cfg)

@@ -60,9 +60,9 @@ class CheckpointManager:
         return self.stop_training, is_improvement
 
 
-def build_metrics(cfg_metrics, device):
+def build_metrics(metrics_cfg, device):
     metrics = {}
-    for name, metric_cfg in cfg_metrics.items():
+    for name, metric_cfg in metrics_cfg.items():
         metric = instantiate(metric_cfg)
         metric = metric.to(device)
         metrics[name] = metric
@@ -70,16 +70,16 @@ def build_metrics(cfg_metrics, device):
     return metrics
 
 
-def build_optimizer(model, cfg_opt):
+def build_optimizer(model, opt_cfg):
     """Instantiate optimizer from Hydra config"""
     return instantiate(
-        cfg_opt, params=filter(lambda p: p.requires_grad, model.parameters())
+        opt_cfg, params=filter(lambda p: p.requires_grad, model.parameters())
     )
 
 
-def build_scheduler(optimizer, cfg_sched):
+def build_scheduler(optimizer, sched_cfg):
     """Instantiate scheduler from Hydra config"""
-    return instantiate(cfg_sched, optimizer=optimizer)
+    return instantiate(sched_cfg, optimizer=optimizer)
 
 
 def build_model(cfg, device):
