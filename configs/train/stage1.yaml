@@ -1,0 +1,35 @@
+stage: 1
+
+lr: 1e-4
+weight_decay: 0.01
+epochs: 1
+batch_size: 16
+batch_size_val: 16
+
+criterion:
+  _target_: utils.losses.LossContainer
+
+  blur_image:
+    weight: 1.0
+    loss:
+      _target_: utils.losses.CharbonnierLoss
+      reduction: mean
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: ${train.lr}
+  weight_decay: ${train.weight_decay}
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  T_max: ${train.epochs}
+
+freeze:
+  - sharp_head
+
+checkpoint:
+  dir: "${hydra:runtime.output_dir}/checkpoints"
+  patience: 5
+  min_delta: 1e-3
+  monitor: ssim
+  mode: max

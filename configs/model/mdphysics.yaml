@@ -1,7 +1,7 @@
 name: "MDPhysics"
 
 arch: 
-  _target_: model.MDPhysics.mdphysics.MDPhysics
+  _target_: model.MDPhysics.DPT
 
   backbone:
     name: "facebook/dinov3-vitb16-pretrain-lvd1689m"  # HuggingFace model identifier
@@ -21,3 +21,4 @@ arch:
     use_bn: false  # Use batch normalization in prediction heads
 
 use_blurring_block: true
+used_image_blurring_block: "pred" # or GT

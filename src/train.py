@@ -9,12 +9,13 @@ from utils.training import (
     build_optimizer,
     build_scheduler,
     build_metrics,
+    build_model,
     CheckpointManager,
-    log_validation_visualizations,
-    log_mdphysics_visualizations,
 )
-
+from utils.losses import build_criterion
 from utils.logger import Logger
+from utils.visuals import log_visualizations
+from torchinfo import summary
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
@@ -54,16 +55,34 @@ def main(cfg: DictConfig):
 
     fixed_batch = next(iter(val_loader))
 
-    fixed_blur = fixed_batch["blur"].to(device)[:2]
-    fixed_sharp = fixed_batch["sharp"].to(device)[:2]
+    # Select 4 random indices from the batch
+    batch_size = fixed_batch["blur"].size(0)
+    indices = torch.randperm(batch_size)[:4]
+    
+    fixed_blur = fixed_batch["blur"][indices].to(device)
+    fixed_sharp = fixed_batch["sharp"][indices].to(device)
 
     # Instantiate model from 'arch' sub-config
-    model = hydra.utils.instantiate(cfg.model.arch).to(device)
+    model = build_model(cfg, device)
+
+    # Get summary as string
+    model_summary = summary(
+        model,
+        input_size=(
+            cfg.train.batch_size,
+            3,
+            cfg.dataset.img_size[0],
+            cfg.dataset.img_size[1],
+        ),
+        depth=4,
+        col_names=["input_size", "output_size", "num_params", "trainable"],
+    )
 
     logger.info("Model initalized successfully!")
     logger.info(f"Device used: {device}")
+    logger.info(str(model_summary))
 
-    criterion = torch.nn.MSELoss()
+    criterion = build_criterion(cfg.train.criterion)
 
     # optimizer and scheduler
     optimizer = build_optimizer(model, cfg.train.optimizer)
@@ -83,17 +102,33 @@ def main(cfg: DictConfig):
 
     for epoch in range(cfg.train.epochs):
         logger.info(f"Epoch {epoch + 1} | Training...")
-        train_loss, train_metrics = train_one_epoch(
+        train_losses, train_metrics = train_one_epoch(
             model, train_loader, optimizer, criterion, device, metrics
         )
 
         logger.info(f"Epoch {epoch + 1} | Validating...")
-        val_loss, val_metrics = validate(model, val_loader, criterion, device, metrics)
+        val_losses, val_metrics = validate(model, val_loader, criterion, device, metrics)
 
         # Logging to TensorBoard
+        # Log total loss
         writer.add_scalars(
-            "metrics/loss", {"train": train_loss, "val": val_loss}, epoch + 1
+            "metrics/loss", 
+            {"train": train_losses.get("total", 0.0), "val": val_losses.get("total", 0.0)}, 
+            epoch + 1
         )
+        
+        # Log individual losses
+        for loss_name in train_losses:
+            if loss_name != "total":
+                writer.add_scalars(
+                    f"losses/{loss_name}",
+                    {
+                        "train": train_losses[loss_name], 
+                        "val": val_losses.get(loss_name, 0.0)
+                    },
+                    epoch + 1,
+                )
+
         for metric_name, train_val in train_metrics.items():
             val_val = val_metrics.get(metric_name)
             if val_val is not None:
@@ -110,8 +145,12 @@ def main(cfg: DictConfig):
                 for k, v in train_metrics.items()
             ]
         )
+
+        train_total = train_losses.get("total", 0.0)
+        val_total = val_losses.get("total", 0.0)
+        
         logger.info(
-            f"Epoch {epoch + 1}: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}, {metrics_str}"
+            f"Epoch {epoch + 1}: train_loss={train_total:.4f}, val_loss={val_total:.4f}, {metrics_str}"
         )
 
         # step scheduler if needed
@@ -124,14 +163,9 @@ def main(cfg: DictConfig):
             logger.info(f"New best model saved! Score: {current_score:.4f}")
 
             # Log visualizations
-            if cfg.model.get("name") == "MDPhysics":
-                log_mdphysics_visualizations(
-                    model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
-                )
-            else:
-                log_validation_visualizations(
-                    model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
-                )
+            log_visualizations(
+                model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
+            )
 
         if stop_training:
             logger.warning(f"Early stopping triggered at epoch {epoch + 1}")

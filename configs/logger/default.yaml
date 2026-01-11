@@ -3,5 +3,5 @@ logger_filename: "train.log"
 log_dir: "${hydra:runtime.output_dir}"
 logger_level: 0
 
-tensorboard_dir: "${hydra:runtime.cwd}/tensorboard/${model.name}/${now:%Y-%m-%d_%H-%M-%S}"
+tensorboard_dir: "${hydra:runtime.cwd}/tensorboard/${model.name}/stage_${train.stage}/${now:%Y-%m-%d_%H-%M-%S}"
 dir: outputs//

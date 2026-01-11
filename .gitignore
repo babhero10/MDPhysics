@@ -3,5 +3,6 @@ outputs/*
 __pycache__
 *.log
 *.drawio*
+*.txt
 tensorboard
 

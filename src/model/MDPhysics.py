@@ -139,11 +139,17 @@ class ReassembleBlock(nn.Module):
         else:
             self.resample = nn.Identity()
 
-    def forward(self, tokens: torch.Tensor, patch_size: int) -> torch.Tensor:
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        patch_size: int,
+        image_size: tuple[int, int] = None,
+    ) -> torch.Tensor:
         """
         Args:
             tokens: (B, N+1, C) where N is number of patches, +1 for CLS token
             patch_size: Size of each patch in the original image
+            image_size: Tuple of (H, W) of the original image
         """
         B, N_plus_1, C = tokens.shape
 
@@ -166,8 +172,20 @@ class ReassembleBlock(nn.Module):
 
         # Reshape to spatial grid
         N = tokens_out.shape[1]
-        H = W = int(N**0.5)
-        assert H * W == N, f"Number of tokens {N} is not a perfect square"
+        if image_size is not None:
+            H_img, W_img = image_size
+            H = H_img // patch_size
+            W = W_img // patch_size
+            if H * W != N:
+                # Fallback if sizes don't match (e.g. padding in backbone)
+                # Try to infer from aspect ratio
+                ratio = H_img / W_img
+                W = int((N / ratio) ** 0.5)
+                H = N // W
+        else:
+            H = W = int(N**0.5)
+
+        assert H * W == N, f"Token count {N} does not match grid {H}x{W}"
 
         tokens_2d = tokens_out.transpose(1, 2).reshape(B, C, H, W)
 
@@ -533,13 +551,30 @@ class DPT(nn.Module):
         Returns:
             Dictionary containing predictions and intermediate outputs
         """
+        # Pad input to be divisible by patch_size (16)
+        H, W = x.shape[2], x.shape[3]
+        patch_size = self.cfg.backbone.patch_size
+
+        pad_h = (patch_size - H % patch_size) % patch_size
+        pad_w = (patch_size - W % patch_size) % patch_size
+
+        x_padded = x
+        if pad_h > 0 or pad_w > 0:
+            x_padded = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
+
         # Extract multi-scale features from backbone
-        backbone_features = self.forward_backbone(x)
+        backbone_features = self.forward_backbone(x_padded)
 
         # Reassemble features into spatial representations
         reassembled = []
         for feat, reassemble_block in zip(backbone_features, self.reassemble_blocks):
-            reassembled.append(reassemble_block(feat, self.cfg.backbone.patch_size))
+            reassembled.append(
+                reassemble_block(
+                    feat,
+                    self.cfg.backbone.patch_size,
+                    image_size=(x_padded.shape[2], x_padded.shape[3]),
+                )
+            )
 
         # Progressive fusion (from deep to shallow)
         fused = reassembled[-1]
@@ -554,6 +589,13 @@ class DPT(nn.Module):
         motion = self.motion_head(fused)  # (B, 6, H, W)
         sharp = self.sharp_head(fused)  # (B, 3, H, W)
 
+        # Crop back to original size
+        if pad_h > 0 or pad_w > 0:
+            depth = depth[..., :H, :W]
+            motion = motion[..., :H, :W]
+            sharp = sharp[..., :H, :W]
+            fused = fused[..., :H, :W]
+
         outputs = {
             "depth": depth,
             "motion": motion,
@@ -561,10 +603,11 @@ class DPT(nn.Module):
             "features": fused,
         }
 
-        # Apply motion field solver if configured (non-learnable operation)
-        if self.use_blurring_block:
-            blurred = motion_blur(depth, motion)
-            outputs["blur_image"] = blurred
+        if self.cfg.use_blurring_block:
+            if self.cfg.used_image_blurring_block == "pred":
+                outputs["blur_image"] = motion_blur(sharp, depth, motion)
+            elif self.cfg.used_image_blurring_block == "GT":
+                outputs["blur_image"] = motion_blur(x, depth, motion)
 
         return outputs
 

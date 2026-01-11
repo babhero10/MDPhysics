@@ -47,7 +47,6 @@ class BlurDataset(Dataset):
         self.__output_path.mkdir(parents=True, exist_ok=True)
 
         self.__lmdb_env = LMDBDataset(self.__output_path)
-        self.__patch_size = dataset_cfg.patch_size
         self.__split = split
 
         self.transform = None
