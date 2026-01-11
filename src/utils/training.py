@@ -4,6 +4,8 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+from utils.vis import visualize_depth, visualize_motion_field
+
 matplotlib.use("Agg")
 
 
@@ -76,7 +78,7 @@ def build_metrics(cfg_metrics, device):
 
 def build_optimizer(model, cfg_opt):
     """Instantiate optimizer from Hydra config"""
-    return instantiate(cfg_opt, params=model.parameters())
+    return instantiate(cfg_opt, params=filter(lambda p: p.requires_grad, model.parameters()))
 
 
 def build_scheduler(optimizer, cfg_sched):
@@ -86,7 +88,7 @@ def build_scheduler(optimizer, cfg_sched):
 
 def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=None):
     model.train()
-    scaler = torch.amp.GradScaler('cuda')
+    scaler = torch.amp.GradScaler("cuda")
 
     for metric in (metrics or {}).values():
         metric.reset()
@@ -96,11 +98,16 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=N
     for batch in train_loader:
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
-        dist = torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4)).float().repeat([blur.size(0),1]).to(device)
+        dist = (
+            torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4))
+            .float()
+            .repeat([blur.size(0), 1])
+            .to(device)
+        )
 
         optimizer.zero_grad()
 
-        with torch.amp.autocast('cuda'):  # FP16 forward
+        with torch.amp.autocast("cuda"):  # FP16 forward
             pred = model(blur, dist)
             pred = torch.clamp(pred, 0, 1)
             loss = criterion(pred, sharp)
@@ -192,7 +199,12 @@ def log_validation_visualizations(
         # Ensure inputs are on device
         blur_imgs = blur_imgs.to(device)
         sharp_imgs = sharp_imgs.to(device)
-        dist = torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4)).float().repeat([blur_imgs.size(0),1]).to(device)
+        dist = (
+            torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4))
+            .float()
+            .repeat([blur_imgs.size(0), 1])
+            .to(device)
+        )
 
         pred_imgs = model(blur_imgs, dist)
         pred_imgs = torch.clamp(pred_imgs, 0, 1)
@@ -200,9 +212,9 @@ def log_validation_visualizations(
         # Loop over each image in the batch
         for i in range(blur_imgs.size(0)):
             # Slice to keep dimensions (1, C, H, W)
-            b = blur_imgs[i: i + 1]
-            s = sharp_imgs[i: i + 1]
-            p = pred_imgs[i: i + 1]
+            b = blur_imgs[i : i + 1]
+            s = sharp_imgs[i : i + 1]
+            p = pred_imgs[i : i + 1]
 
             # Calculate metrics for this image
             img_metrics = {}
@@ -221,6 +233,58 @@ def log_validation_visualizations(
             plt.close(fig)
 
 
+def log_mdphysics_visualizations(
+    model, writer, epoch, blur_imgs, sharp_imgs, metrics, device
+):
+    """
+    Custom visualization logger for MDPhysics model.
+    Handles dictionary output and logs depth + motion field.
+    """
+    model.eval()
+    with torch.no_grad():
+        blur_imgs = blur_imgs.to(device)
+        sharp_imgs = sharp_imgs.to(device)
+
+        # MDPhysics.forward(img) - does not take dist argument
+        outputs = model(blur_imgs)
+
+        # Extract outputs
+        pred_imgs = outputs["enhanced_img"]
+        pred_imgs = torch.clamp(pred_imgs, 0, 1)
+        depth = outputs["depth"]
+        motion_field = outputs["motion_field"]
+
+        # Loop over each image in the batch
+        for i in range(blur_imgs.size(0)):
+            b = blur_imgs[i : i + 1]
+            s = sharp_imgs[i : i + 1]
+            p = pred_imgs[i : i + 1]
+            d = depth[i : i + 1]
+            mf = motion_field[i : i + 1]
+
+            # Calculate metrics for this image
+            img_metrics = {}
+            for name, metric in metrics.items():
+                metric.reset()
+                metric.update(p, s)
+                img_metrics[name] = metric.compute().item()
+
+            # 1. Log Restored Image (Standard)
+            fig = create_validation_figure(b, s, p, metrics_dict=[img_metrics])
+            writer.add_figure(f"deblurred_image_{i}", fig, epoch)
+            plt.close(fig)
+
+            # 2. Log Depth Map
+            # visualize_depth returns RGB numpy array (H, W, 3)
+            d_vis = visualize_depth(d)
+            writer.add_image(f"depth_map_{i}", d_vis, epoch, dataformats="HWC")
+
+            # 3. Log Motion Field
+            # visualize_motion_field returns RGB numpy array (H, W, 3)
+            mf_vis = visualize_motion_field(mf)
+            writer.add_image(f"motion_field_{i}", mf_vis, epoch, dataformats="HWC")
+
+
 @torch.no_grad()
 def validate(model, val_loader, criterion, device, metrics=None):
     model.eval()
@@ -232,9 +296,14 @@ def validate(model, val_loader, criterion, device, metrics=None):
     for batch in val_loader:
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
-        dist = torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4)).float().repeat([blur.size(0), 1]).to(device)
+        dist = (
+            torch.tensor(np.array([0.5, 0.5, 0.5, 0.5]).reshape(1, 4))
+            .float()
+            .repeat([blur.size(0), 1])
+            .to(device)
+        )
 
-        with torch.amp.autocast('cuda'):
+        with torch.amp.autocast("cuda"):
             pred = model(blur, dist)
             pred = torch.clamp(pred, 0, 1)
             loss = criterion(pred, sharp)

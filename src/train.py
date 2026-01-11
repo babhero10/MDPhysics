@@ -11,6 +11,7 @@ from utils.training import (
     build_metrics,
     CheckpointManager,
     log_validation_visualizations,
+    log_mdphysics_visualizations,
 )
 
 from utils.logger import Logger
@@ -53,8 +54,8 @@ def main(cfg: DictConfig):
 
     fixed_batch = next(iter(val_loader))
 
-    fixed_blur = fixed_batch['blur'].to(device)[:2]
-    fixed_sharp = fixed_batch['sharp'].to(device)[:2]
+    fixed_blur = fixed_batch["blur"].to(device)[:2]
+    fixed_sharp = fixed_batch["sharp"].to(device)[:2]
 
     # Instantiate model from 'arch' sub-config
     model = hydra.utils.instantiate(cfg.model.arch).to(device)
@@ -123,9 +124,14 @@ def main(cfg: DictConfig):
             logger.info(f"New best model saved! Score: {current_score:.4f}")
 
             # Log visualizations
-            log_validation_visualizations(
-                model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
-            )
+            if cfg.model.get("name") == "MDPhysics":
+                log_mdphysics_visualizations(
+                    model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
+                )
+            else:
+                log_validation_visualizations(
+                    model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
+                )
 
         if stop_training:
             logger.warning(f"Early stopping triggered at epoch {epoch + 1}")
