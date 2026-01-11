@@ -51,10 +51,12 @@ class FeatureFusionBlock(nn.Module):
     def __init__(
         self,
         features: int,
+        skip_channels: int = 0,
         use_bn: bool = False,
         activation: nn.Module = nn.ReLU(inplace=True),
         deconv: bool = False,
         expand: bool = False,
+        upsample: bool = True,
     ):
         super().__init__()
 
@@ -67,23 +69,35 @@ class FeatureFusionBlock(nn.Module):
         self.resConfUnit1 = ResidualConvUnit(features, use_bn, activation)
         self.resConfUnit2 = ResidualConvUnit(features, use_bn, activation)
 
-        if deconv:
-            self.upsample = nn.ConvTranspose2d(
-                out_features, out_features, kernel_size=2, stride=2
-            )
+        # Projection for skip connection if channels don't match
+        self.skip_proj = nn.Identity()
+        if skip_channels != 0 and skip_channels != features:
+            self.skip_proj = nn.Conv2d(skip_channels, features, kernel_size=1)
+
+        if upsample:
+            if deconv:
+                self.upsample = nn.ConvTranspose2d(
+                    out_features, out_features, kernel_size=2, stride=2
+                )
+            else:
+                self.upsample = nn.Upsample(
+                    scale_factor=2, mode="bilinear", align_corners=True
+                )
         else:
-            self.upsample = nn.Upsample(
-                scale_factor=2, mode="bilinear", align_corners=True
-            )
+            self.upsample = nn.Identity()
 
     def forward(self, *xs: torch.Tensor) -> torch.Tensor:
         output = xs[0]
 
         if len(xs) == 2:
+            skip = xs[1]
+            # Project skip connection if needed
+            skip = self.skip_proj(skip)
+
             # Resize second input to match first
             res = nn.functional.interpolate(
-                xs[1],
-                size=(xs[0].shape[2], xs[0].shape[3]),
+                skip,
+                size=(output.shape[2], output.shape[3]),
                 mode="bilinear",
                 align_corners=True,
             )
@@ -117,27 +131,8 @@ class ReassembleBlock(nn.Module):
                 nn.Linear(2 * in_channels, in_channels), nn.GELU()
             )
 
-        # Project to output channels
+        # Project to output channels (1x1 Conv - pure projection)
         self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-
-        # Resample to target resolution
-        if scale_factor > 1.0:
-            self.resample = nn.ConvTranspose2d(
-                out_channels,
-                out_channels,
-                kernel_size=int(scale_factor),
-                stride=int(scale_factor),
-            )
-        elif scale_factor < 1.0:
-            self.resample = nn.Conv2d(
-                out_channels,
-                out_channels,
-                kernel_size=3,
-                stride=int(1.0 / scale_factor),
-                padding=1,
-            )
-        else:
-            self.resample = nn.Identity()
 
     def forward(
         self,
@@ -151,11 +146,26 @@ class ReassembleBlock(nn.Module):
             patch_size: Size of each patch in the original image
             image_size: Tuple of (H, W) of the original image
         """
-        B, N_plus_1, C = tokens.shape
+        B, T, C = tokens.shape
+
+        # Calculate grid size first to know how many tokens are spatial patches
+        if image_size is not None:
+            H_img, W_img = image_size
+            H = H_img // patch_size
+            W = W_img // patch_size
+        else:
+            # Fallback estimation if image_size not provided (assumes no registers)
+            # This path might still fail with registers if image_size is None
+            N_spatial = T - 1
+            H = W = int(N_spatial**0.5)
+
+        N_spatial = H * W
 
         # Separate CLS token and patch tokens
+        # We assume CLS is at index 0, and patches are the LAST N_spatial tokens
+        # Any tokens in between (e.g., indices 1 to T-N_spatial) are registers and ignored
         cls_token = tokens[:, 0:1, :]  # (B, 1, C)
-        patch_tokens = tokens[:, 1:, :]  # (B, N, C)
+        patch_tokens = tokens[:, -N_spatial:, :]  # (B, N_spatial, C)
 
         # Apply read operation
         if self.read_operation == "ignore":
@@ -170,50 +180,42 @@ class ReassembleBlock(nn.Module):
         else:
             raise ValueError(f"Unknown read operation: {self.read_operation}")
 
-        # Reshape to spatial grid
-        N = tokens_out.shape[1]
-        if image_size is not None:
-            H_img, W_img = image_size
-            H = H_img // patch_size
-            W = W_img // patch_size
-            if H * W != N:
-                # Fallback if sizes don't match (e.g. padding in backbone)
-                # Try to infer from aspect ratio
-                ratio = H_img / W_img
-                W = int((N / ratio) ** 0.5)
-                H = N // W
-        else:
-            H = W = int(N**0.5)
+        assert (
+            H * W == tokens_out.shape[1]
+        ), f"Token count {tokens_out.shape[1]} does not match grid {H}x{W}"
 
-        assert H * W == N, f"Token count {N} does not match grid {H}x{W}"
+        tokens_2d = tokens_out.transpose(1, 2).reshape(
+            B, tokens_out.shape[-1], H, W
+        )
 
-        tokens_2d = tokens_out.transpose(1, 2).reshape(B, C, H, W)
-
-        # Project and resample
+        # Project
         out = self.proj(tokens_2d)
-        out = self.resample(out)
+
+        # Resample
+        if self.scale_factor != 1.0:
+            out = F.interpolate(
+                out, scale_factor=self.scale_factor, mode="bilinear", align_corners=True
+            )
 
         return out
 
 
 class DPTHead(nn.Module):
-    """Base head for DPT predictions."""
+    """DPT head: channel projection only, no spatial upsampling."""
 
     def __init__(self, in_channels: int, out_channels: int, use_bn: bool = False):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(in_channels, in_channels // 2, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(in_channels // 2, 32, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(32, out_channels, kernel_size=1)
-        self.relu = nn.ReLU(inplace=True)
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels // 2, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels // 2, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, out_channels, kernel_size=1),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.relu(self.conv1(x))
-        x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=True)
-        x = self.relu(self.conv2(x))
-        x = self.conv3(x)
-        x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=True)
-        return x
+        return self.net(x)
 
 
 class DepthHead(DPTHead):
@@ -225,7 +227,7 @@ class DepthHead(DPTHead):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         depth = super().forward(x)
         # Ensure positive depth values
-        depth = F.relu(depth)
+        depth = F.sigmoid(depth)
         return depth
 
 
@@ -469,7 +471,7 @@ class DPT(nn.Module):
 
         # Load backbone (frozen or trainable based on config)
         self.backbone = AutoModel.from_pretrained(
-            cfg.backbone.name, trust_remote_code=True
+            cfg.backbone.name, trust_remote_code=True, output_hidden_states=True
         )
 
         if cfg.backbone.freeze:
@@ -503,13 +505,31 @@ class DPT(nn.Module):
         self.fusion_blocks = nn.ModuleList()
         num_layers = len(self.feature_layers)
 
+        # Get fusion channels from config or default to implicit assumptions
+        fusion_channels = getattr(cfg.decoder, "fusion_channels", [64, 128, 256, 256])
+
+        assert (
+            len(fusion_channels) == num_layers
+        ), f"Number of fusion channel widths ({len(fusion_channels)}) must match number of layers ({num_layers})"
+
         for i in range(num_layers):
+            expand = i != num_layers - 1
+
+            # Use explicit channel width from config
+            f = fusion_channels[i]
+
+            # Skip channels are always from reassembled blocks (constant width)
+            # Block 0 doesn't take a skip connection in the loop structure (it's the final head)
+            skip_ch = cfg.decoder.features if i > 0 else 0
+
             self.fusion_blocks.append(
                 FeatureFusionBlock(
-                    features=cfg.decoder.features,
+                    features=f,
+                    skip_channels=skip_ch,
                     use_bn=cfg.decoder.use_bn,
                     deconv=cfg.decoder.use_deconv,
-                    expand=(i != num_layers - 1),
+                    expand=expand,
+                    upsample=(i != 0),
                 )
             )
 
@@ -525,9 +545,6 @@ class DPT(nn.Module):
         self.sharp_head = SharpImageHead(
             in_channels=final_features, use_bn=cfg.heads.use_bn
         )
-
-        # Motion field solver flag
-        self.use_motion_solver = cfg.use_motion_solver
 
     def forward_backbone(self, x: torch.Tensor) -> List[torch.Tensor]:
         """Extract features from backbone at multiple layers."""

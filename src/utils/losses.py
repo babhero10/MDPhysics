@@ -33,7 +33,7 @@ class LossContainer(nn.Module):
             if name == "_target_":
                 continue
 
-            self.losses[name] = instantiate(entry.loss)
+            self.losses[name] = entry.loss
             self.weights[name] = entry.weight
 
     def forward(self, preds: dict, targets: dict):

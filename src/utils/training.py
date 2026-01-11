@@ -1,6 +1,7 @@
 import torch
 from hydra.utils import instantiate
 from pathlib import Path
+from omegaconf import OmegaConf
 
 
 class CheckpointManager:
@@ -83,16 +84,24 @@ def build_scheduler(optimizer, sched_cfg):
 
 
 def build_model(cfg, device):
+    # Instantiate model
     model = instantiate(cfg.model.arch).to(device)
 
-    if cfg.train.freeze is not None:
+    # Freeze layers if specified
+    freeze_rules = OmegaConf.select(cfg, "train.freeze")
+    if freeze_rules:
+        # Ensure it's a list
+        if isinstance(freeze_rules, str):
+            freeze_rules = [freeze_rules]
         for name, param in model.named_parameters():
-            for rule in cfg.train.freeze:
+            for rule in freeze_rules:
                 if name.startswith(rule):
                     param.requires_grad = False
 
-    if cfg.train.last_checkpoint is not None:
-        model.load_state_dict(torch.load(cfg.train.last_checkpoint))
+    # Load last checkpoint if specified
+    last_ckpt = OmegaConf.select(cfg, "train.last_checkpoint")
+    if last_ckpt:
+        model.load_state_dict(torch.load(last_ckpt, map_location=device))
 
     return model
 

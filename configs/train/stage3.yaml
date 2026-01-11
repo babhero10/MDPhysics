@@ -3,23 +3,23 @@ stage: 3
 lr: 1e-4
 weight_decay: 0.01
 epochs: 100
-batch_size: 16
-batch_size_val: 16
+batch_size: 64
+batch_size_val: 32
 
 criterion:
   _target_: utils.losses.LossContainer
+  cfg:
+    blur_image:
+      weight: 0.25
+      loss:
+        _target_: utils.losses.CharbonnierLoss
+        reduction: mean
 
-  blur_image:
-    weight: 0.25
-    loss:
-      _target_: utils.losses.CharbonnierLoss
-      reduction: mean
-
-  sharp_image:
-    weight: 0.75
-    loss:
-      _target_: utils.losses.CharbonnierLoss
-      reduction: mean 
+    sharp_image:
+      weight: 0.75
+      loss:
+        _target_: utils.losses.CharbonnierLoss
+        reduction: mean 
       
 optimizer:
   _target_: torch.optim.AdamW

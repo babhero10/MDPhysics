@@ -11,8 +11,9 @@ arch:
 
     decoder:
       features: 256  # Feature dimension for decoder
-      feature_layers: [6, 12, 18, 24]  # Layers to extract features from (for base: 12 layers total)
+      feature_layers: [2, 5, 8, 11]  # Layers to extract features from (for base: 12 layers total)
       scales: [4, 8, 16, 32]  # Output scales for each reassembled feature
+      fusion_channels: [64, 128, 256, 256] # Explicit channel widths for fusion blocks [Block 0, Block 1, Block 2, Block 3]
       read_operation: "project"  # Options: "ignore", "add", "project"
       use_bn: false  # Use batch normalization in fusion blocks
       use_deconv: false  # Use transposed conv for upsampling
