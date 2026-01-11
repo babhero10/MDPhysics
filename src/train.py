@@ -58,7 +58,7 @@ def main(cfg: DictConfig):
     # Select 4 random indices from the batch
     batch_size = fixed_batch["blur"].size(0)
     indices = torch.randperm(batch_size)[:4]
-    
+
     fixed_blur = fixed_batch["blur"][indices].to(device)
     fixed_sharp = fixed_batch["sharp"][indices].to(device)
 
@@ -107,24 +107,29 @@ def main(cfg: DictConfig):
         )
 
         logger.info(f"Epoch {epoch + 1} | Validating...")
-        val_losses, val_metrics = validate(model, val_loader, criterion, device, metrics)
+        val_losses, val_metrics = validate(
+            model, val_loader, criterion, device, metrics
+        )
 
         # Logging to TensorBoard
         # Log total loss
         writer.add_scalars(
-            "metrics/loss", 
-            {"train": train_losses.get("total", 0.0), "val": val_losses.get("total", 0.0)}, 
-            epoch + 1
+            "metrics/loss",
+            {
+                "train": train_losses.get("total", 0.0),
+                "val": val_losses.get("total", 0.0),
+            },
+            epoch + 1,
         )
-        
+
         # Log individual losses
         for loss_name in train_losses:
             if loss_name != "total":
                 writer.add_scalars(
                     f"losses/{loss_name}",
                     {
-                        "train": train_losses[loss_name], 
-                        "val": val_losses.get(loss_name, 0.0)
+                        "train": train_losses[loss_name],
+                        "val": val_losses.get(loss_name, 0.0),
                     },
                     epoch + 1,
                 )
@@ -148,7 +153,7 @@ def main(cfg: DictConfig):
 
         train_total = train_losses.get("total", 0.0)
         val_total = val_losses.get("total", 0.0)
-        
+
         logger.info(
             f"Epoch {epoch + 1}: train_loss={train_total:.4f}, val_loss={val_total:.4f}, {metrics_str}"
         )

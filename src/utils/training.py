@@ -130,7 +130,7 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=N
         for k, v in loss_dict.items():
             current = running_loss_dict.get(k, 0.0)
             running_loss_dict[k] = current + v.item() * batch_size
-        
+
         total_samples += batch_size
 
         # update metrics (keep in FP32 for accuracy)
@@ -144,7 +144,7 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=N
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()
     }
-    
+
     avg_loss_dict = {k: v / total_samples for k, v in running_loss_dict.items()}
 
     return avg_loss_dict, results
@@ -174,7 +174,7 @@ def validate(model, val_loader, criterion, device, metrics=None):
         for k, v in loss_dict.items():
             current = running_loss_dict.get(k, 0.0)
             running_loss_dict[k] = current + v.item() * batch_size
-            
+
         total_samples += batch_size
 
         if metrics:
@@ -185,7 +185,7 @@ def validate(model, val_loader, criterion, device, metrics=None):
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()
     }
-    
+
     avg_loss_dict = {k: v / total_samples for k, v in running_loss_dict.items()}
 
     return avg_loss_dict, results

@@ -20,5 +20,5 @@ arch:
   heads:
     use_bn: false  # Use batch normalization in prediction heads
 
-use_blurring_block: true
-used_image_blurring_block: "pred" # or GT
+  use_blurring_block: true
+  used_image_blurring_block: "pred" # or GT

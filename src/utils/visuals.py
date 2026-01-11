@@ -91,9 +91,9 @@ class DPTVisualizer:
         """
         # Prepare visualizations
         vis_items = [("Input", image)]
-        
+
         if ground_truth is not None:
-             vis_items.append(("Ground Truth", ground_truth))
+            vis_items.append(("Ground Truth", ground_truth))
 
         if "depth" in predictions:
             depth_vis = DPTVisualizer.visualize_depth(predictions["depth"])
@@ -121,8 +121,12 @@ class DPTVisualizer:
             linear = motion[0:3, :, :]
             angular = motion[3:6, :, :]
 
-            vis_items.append(("Linear Velocity", DPTVisualizer.visualize_vector_map(linear)))
-            vis_items.append(("Angular Velocity", DPTVisualizer.visualize_vector_map(angular)))
+            vis_items.append(
+                ("Linear Velocity", DPTVisualizer.visualize_vector_map(linear))
+            )
+            vis_items.append(
+                ("Angular Velocity", DPTVisualizer.visualize_vector_map(angular))
+            )
 
         title_str = ""
         if metrics is not None:
@@ -138,14 +142,14 @@ class DPTVisualizer:
         if n_rows == 1:
             axes = axes.reshape(1, -1)
         elif n_rows > 1 and n_cols == 1:
-             axes = axes.reshape(-1, 1)
+            axes = axes.reshape(-1, 1)
 
         if title_str:
             fig.suptitle(title_str, fontsize=14, y=0.98)
 
         # Handle single subplot case (axes is not array if 1x1, but we forced reshape or grid size >= 2 usually)
         # With n_cols=2, we always have array unless n_items=1 which is unlikely (Input + something).
-        
+
         # Flatten axes for easy iteration if it's a grid
         axes_flat = axes.flatten()
 
@@ -169,9 +173,7 @@ class DPTVisualizer:
         return grid
 
 
-def log_visualizations(
-    model, writer, epoch, blur_imgs, sharp_imgs, metrics, device
-):
+def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, device):
     """
     Custom visualization logger for MDPhysics model.
     Handles dictionary output and logs depth + motion field.
@@ -188,7 +190,7 @@ def log_visualizations(
             # Prepare inputs for visualization (convert to numpy HWC)
             blur_np = blur_imgs[i].permute(1, 2, 0).cpu().numpy()
             blur_np = (blur_np * 255).astype(np.uint8)
-            
+
             sharp_np = sharp_imgs[i].permute(1, 2, 0).cpu().numpy()
             sharp_np = (sharp_np * 255).astype(np.uint8)
 
@@ -203,22 +205,25 @@ def log_visualizations(
             if "sharp_image" in outputs:
                 pred_sharp_tensor = outputs["sharp_image"][i]
                 target_sharp_tensor = sharp_imgs[i]
-                
+
                 # Clamp for metrics
                 pred_sharp_clamped = torch.clamp(pred_sharp_tensor, 0, 1)
 
                 for name, metric in metrics.items():
                     metric.reset()
-                    metric.update(pred_sharp_clamped.unsqueeze(0), target_sharp_tensor.unsqueeze(0))
+                    metric.update(
+                        pred_sharp_clamped.unsqueeze(0),
+                        target_sharp_tensor.unsqueeze(0),
+                    )
                     img_metrics[name] = metric.compute().item()
 
             writer.add_image(
                 f"visuals/{i}",
                 DPTVisualizer.create_comparison_grid(
-                    image=blur_np, 
-                    predictions=sample_preds, 
+                    image=blur_np,
+                    predictions=sample_preds,
                     metrics=img_metrics,
-                    ground_truth=sharp_np
+                    ground_truth=sharp_np,
                 ),
                 epoch,
                 dataformats="HWC",
