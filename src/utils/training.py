@@ -144,13 +144,13 @@ def train_one_epoch(
 
         total_samples += batch_size
 
-        # update metrics (keep in FP32 for accuracy)
         if metrics:
-            # Metrics usually expect sharp predictions vs sharp targets
-            # Check what pred["sharp_image"] contains.
             if "sharp_image" in pred:
-                for metric in metrics.values():
-                    metric.update(pred["sharp_image"].detach(), sharp)
+                with torch.no_grad():
+                    pred_cpu = pred["sharp_image"].detach().float().cpu()
+                    sharp_cpu = sharp.detach().float().cpu()
+                    for metric in metrics.values():
+                        metric.update(pred_cpu, sharp_cpu)
 
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()
@@ -190,8 +190,11 @@ def validate(model, val_loader, criterion, device, metrics=None):
 
         if metrics:
             if "sharp_image" in pred:
-                for metric in metrics.values():
-                    metric.update(pred["sharp_image"], sharp)
+                with torch.no_grad():
+                    pred_cpu = pred["sharp_image"].detach().float().cpu()
+                    sharp_cpu = sharp.detach().float().cpu()
+                    for metric in metrics.values():
+                        metric.update(pred_cpu, sharp_cpu)
 
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()

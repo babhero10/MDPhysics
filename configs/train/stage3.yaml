@@ -9,14 +9,15 @@ batch_size_val: 32
 criterion:
   _target_: utils.losses.LossContainer
   cfg:
-    blur_image:
-      weight: 0.25
-      loss:
-        _target_: utils.losses.CharbonnierLoss
-        reduction: mean
+    # blur_image:
+    #   weight: 0.25
+    #   loss:
+    #     _target_: utils.losses.CharbonnierLoss
+    #     reduction: mean
 
     sharp_image:
-      weight: 0.75
+      # weight: 0.75
+      weight: 1.0
       loss:
         _target_: utils.losses.CharbonnierLoss
         reduction: mean 
@@ -36,5 +37,9 @@ checkpoint:
   min_delta: 1e-3
   monitor: ssim
   mode: max
+
+freeze: 
+  - depth_head
+  - motion_head
 
 last_checkpoint: ""
