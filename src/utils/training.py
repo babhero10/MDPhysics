@@ -2,6 +2,7 @@ import torch
 from hydra.utils import instantiate
 from pathlib import Path
 from omegaconf import OmegaConf
+from tqdm import tqdm
 
 
 class CheckpointManager:
@@ -106,9 +107,10 @@ def build_model(cfg, device):
     return model
 
 
-def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=None):
+def train_one_epoch(
+    model, train_loader, optimizer, criterion, device, scaler, metrics=None
+):
     model.train()
-    scaler = torch.amp.GradScaler("cuda")
 
     for metric in (metrics or {}).values():
         metric.reset()
@@ -116,7 +118,7 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device, metrics=N
     running_loss_dict = {}
     total_samples = 0
 
-    for batch in train_loader:
+    for batch in tqdm(train_loader, desc="Training", leave=False):
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
         batch_size = blur.size(0)
@@ -168,7 +170,7 @@ def validate(model, val_loader, criterion, device, metrics=None):
     running_loss_dict = {}
     total_samples = 0
 
-    for batch in val_loader:
+    for batch in tqdm(val_loader, desc="Validating", leave=False):
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
         batch_size = blur.size(0)

@@ -1,7 +1,7 @@
 src_root: ${hydra:runtime.cwd}/data/GoPro/raw
 dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
 img_size: [360, 640]
-num_workers: 3
+num_workers: 4
 
 augmentations:
   _target_: albumentations.Compose

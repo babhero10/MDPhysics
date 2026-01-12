@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from typing import Dict, Optional
-import cv2
 
 matplotlib.use("Agg")
 
@@ -166,8 +165,9 @@ class DPTVisualizer:
 
         # Convert to numpy array
         fig.canvas.draw()
-        grid = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-        grid = grid.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        grid = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+        grid = grid.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+        grid = grid[..., :3]
         plt.close(fig)
 
         return grid

@@ -20,6 +20,10 @@ from torchinfo import summary
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig):
+    # Optimize for modern GPUs
+    torch.set_float32_matmul_precision("high")
+    torch.backends.cudnn.benchmark = True
+
     set_seed(cfg.seed)
     # Initialize Logger
     _ = Logger(cfg.logger)
@@ -98,12 +102,15 @@ def main(cfg: DictConfig):
         min_delta=cfg.train.checkpoint.min_delta,
     )
 
+    # Optimization
+    scaler = torch.amp.GradScaler("cuda")
+
     logger.info("Training Started!")
 
     for epoch in range(cfg.train.epochs):
         logger.info(f"Epoch {epoch + 1} | Training...")
         train_losses, train_metrics = train_one_epoch(
-            model, train_loader, optimizer, criterion, device, metrics
+            model, train_loader, optimizer, criterion, device, scaler, metrics
         )
 
         logger.info(f"Epoch {epoch + 1} | Validating...")
