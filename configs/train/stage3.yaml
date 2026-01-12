@@ -3,8 +3,8 @@ stage: 3
 lr: 1e-4
 weight_decay: 0.01
 epochs: 100
-batch_size: 64
-batch_size_val: 32
+batch_size: 32
+batch_size_val: 16
 
 criterion:
   _target_: utils.losses.LossContainer

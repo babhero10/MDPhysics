@@ -146,11 +146,8 @@ def train_one_epoch(
 
         if metrics:
             if "sharp_image" in pred:
-                with torch.no_grad():
-                    pred_cpu = pred["sharp_image"].detach().float().cpu()
-                    sharp_cpu = sharp.detach().float().cpu()
-                    for metric in metrics.values():
-                        metric.update(pred_cpu, sharp_cpu)
+                for metric in metrics.values():
+                    metric.update(pred["sharp_image"].detach(), sharp)
 
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()
@@ -190,11 +187,8 @@ def validate(model, val_loader, criterion, device, metrics=None):
 
         if metrics:
             if "sharp_image" in pred:
-                with torch.no_grad():
-                    pred_cpu = pred["sharp_image"].detach().float().cpu()
-                    sharp_cpu = sharp.detach().float().cpu()
-                    for metric in metrics.values():
-                        metric.update(pred_cpu, sharp_cpu)
+                for metric in metrics.values():
+                    metric.update(pred["sharp_image"].detach(), sharp)
 
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()
