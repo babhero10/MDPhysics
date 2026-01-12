@@ -79,10 +79,21 @@ class BlurDataset(Dataset):
         blur_dir = gopro_root / "blur"
         sharp_dir = gopro_root / "sharp"
 
-        blur_files = sorted(blur_dir.iterdir())
-        sharp_files = sorted(sharp_dir.iterdir())
+        blur_names = {p.name for p in blur_dir.iterdir()}
+        sharp_names = {p.name for p in sharp_dir.iterdir()}
 
-        assert len(blur_files) == len(sharp_files), "Blur/Sharp count mismatch"
+        common_names = sorted(list(blur_names.intersection(sharp_names)))
+
+        if len(common_names) != len(blur_names) or len(common_names) != len(
+            sharp_names
+        ):
+            print(
+                f"Warning: Dataset mismatch in {self.__split} split. "
+                f"Blur: {len(blur_names)}, Sharp: {len(sharp_names)}, Common: {len(common_names)}"
+            )
+
+        blur_files = [blur_dir / name for name in common_names]
+        sharp_files = [sharp_dir / name for name in common_names]
 
         length = len(blur_files)
 

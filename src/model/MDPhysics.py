@@ -184,9 +184,7 @@ class ReassembleBlock(nn.Module):
             H * W == tokens_out.shape[1]
         ), f"Token count {tokens_out.shape[1]} does not match grid {H}x{W}"
 
-        tokens_2d = tokens_out.transpose(1, 2).reshape(
-            B, tokens_out.shape[-1], H, W
-        )
+        tokens_2d = tokens_out.transpose(1, 2).reshape(B, tokens_out.shape[-1], H, W)
 
         # Project
         out = self.proj(tokens_2d)
