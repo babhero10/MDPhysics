@@ -14,6 +14,7 @@ arch:
       feature_layers: [2, 5, 8, 11]  # Layers to extract features from (for base: 12 layers total)
       scales: [4, 8, 16, 32]  # Output scales for each reassembled feature
       fusion_channels: [64, 128, 256, 256] # Explicit channel widths for fusion blocks [Block 0, Block 1, Block 2, Block 3]
+      separate_sharp_head: false # Whether to use a separate fusion path for the sharp image head
       read_operation: "project"  # Options: "ignore", "add", "project"
       use_bn: false  # Use batch normalization in fusion blocks
       use_deconv: false  # Use transposed conv for upsampling

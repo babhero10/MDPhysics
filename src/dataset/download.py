@@ -117,15 +117,15 @@ def split_train_val(cfg):
     # Use the first mode to determine the list of files
     first_mode = cfg.modes[0]
     ref_train_dir = train_dir / first_mode
-    
+
     if not ref_train_dir.exists():
         logger.error(f"Reference mode directory {ref_train_dir} doesn't exist")
         return False
 
     # Get all images and sort them to ensure deterministic shuffling
-    images = sorted([
-        img.name for img in ref_train_dir.iterdir() if img.suffix.lower() == ".png"
-    ])
+    images = sorted(
+        [img.name for img in ref_train_dir.iterdir() if img.suffix.lower() == ".png"]
+    )
 
     if len(images) == 0:
         logger.warning(f"No images found in {ref_train_dir}")
@@ -143,7 +143,7 @@ def split_train_val(cfg):
         for mode in cfg.modes:
             src_path = train_dir / mode / filename
             dst_path = val_dir / mode / filename
-            
+
             if src_path.exists():
                 shutil.move(str(src_path), str(dst_path))
             else:

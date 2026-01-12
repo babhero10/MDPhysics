@@ -531,6 +531,27 @@ class DPT(nn.Module):
                 )
             )
 
+        # Separate fusion blocks for sharp head if requested
+        self.separate_sharp_head = getattr(cfg.decoder, "separate_sharp_head", False)
+        self.sharp_fusion_blocks = nn.ModuleList()
+
+        if self.separate_sharp_head:
+            for i in range(num_layers):
+                expand = i != num_layers - 1
+                f = fusion_channels[i]
+                skip_ch = cfg.decoder.features if i > 0 else 0
+
+                self.sharp_fusion_blocks.append(
+                    FeatureFusionBlock(
+                        features=f,
+                        skip_channels=skip_ch,
+                        use_bn=cfg.decoder.use_bn,
+                        deconv=cfg.decoder.use_deconv,
+                        expand=expand,
+                        upsample=(i != 0),
+                    )
+                )
+
         # Prediction heads
         final_features = cfg.decoder.features // (2 ** (num_layers - 1))
 
@@ -599,10 +620,20 @@ class DPT(nn.Module):
         # Final fusion
         fused = self.fusion_blocks[0](fused)
 
+        # Separate fusion for sharp head
+        fused_sharp = fused
+        if self.separate_sharp_head:
+            fused_sharp = reassembled[-1]
+            for i in range(len(reassembled) - 1, 0, -1):
+                fused_sharp = self.sharp_fusion_blocks[i](
+                    fused_sharp, reassembled[i - 1]
+                )
+            fused_sharp = self.sharp_fusion_blocks[0](fused_sharp)
+
         # Generate predictions from heads
         depth = self.depth_head(fused)  # (B, 1, H, W)
         motion = self.motion_head(fused)  # (B, 6, H, W)
-        sharp = self.sharp_head(fused)  # (B, 3, H, W)
+        sharp = self.sharp_head(fused_sharp)  # (B, 3, H, W)
 
         # Crop back to original size
         if pad_h > 0 or pad_w > 0:
