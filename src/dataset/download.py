@@ -114,35 +114,40 @@ def split_train_val(cfg):
     for mode in cfg.modes:
         (val_dir / mode).mkdir(parents=True, exist_ok=True)
 
-    # Process each mode (e.g., 'blur', 'sharp')
-    for mode in cfg.modes:
-        train_mode_dir = train_dir / mode
-        val_mode_dir = val_dir / mode
+    # Use the first mode to determine the list of files
+    first_mode = cfg.modes[0]
+    ref_train_dir = train_dir / first_mode
+    
+    if not ref_train_dir.exists():
+        logger.error(f"Reference mode directory {ref_train_dir} doesn't exist")
+        return False
 
-        if not train_mode_dir.exists():
-            logger.warning(f"Mode directory {train_mode_dir} doesn't exist")
-            continue
+    # Get all images and sort them to ensure deterministic shuffling
+    images = sorted([
+        img.name for img in ref_train_dir.iterdir() if img.suffix.lower() == ".png"
+    ])
 
-        # Get all images
-        images = [
-            img for img in train_mode_dir.iterdir() if img.suffix.lower() == ".png"
-        ]
+    if len(images) == 0:
+        logger.warning(f"No images found in {ref_train_dir}")
+        return False
 
-        if len(images) == 0:
-            logger.warning(f"No images found in {train_mode_dir}")
-            continue
+    # Shuffle and split
+    random.shuffle(images)
+    num_val = int(len(images) * val_split)
+    val_filenames = images[:num_val]
 
-        # Shuffle and split
-        random.shuffle(images)
-        num_val = int(len(images) * val_split)
-        val_images = images[:num_val]
+    logger.info(f"Moving {num_val} images from train to val for modes: {cfg.modes}")
 
-        logger.info(f"Moving {num_val} images from train/{mode} to val/{mode}")
-
-        # Move validation images
-        for img_path in val_images:
-            dst_path = val_mode_dir / img_path.name
-            shutil.move(str(img_path), str(dst_path))
+    # Move validation images for ALL modes
+    for filename in val_filenames:
+        for mode in cfg.modes:
+            src_path = train_dir / mode / filename
+            dst_path = val_dir / mode / filename
+            
+            if src_path.exists():
+                shutil.move(str(src_path), str(dst_path))
+            else:
+                logger.warning(f"File not found: {src_path}")
 
     logger.info("Train/Val split completed successfully!")
     return True
