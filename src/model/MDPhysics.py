@@ -835,7 +835,9 @@ class DPT(nn.Module):
             features.append(hidden_states[layer_idx])
         return features
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, gt_sharp: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
         """
         Args:
             x: Input image (B, 3, H, W)
@@ -902,6 +904,6 @@ class DPT(nn.Module):
         if self.cfg.used_image_blurring_block == "pred":
             outputs["blur_image"] = motion_blur(refined_rgb, depth, motion)
         elif self.cfg.used_image_blurring_block == "GT":
-            outputs["blur_image"] = motion_blur(x, depth, motion)
+            outputs["blur_image"] = motion_blur(gt_sharp, depth, motion)
 
         return outputs

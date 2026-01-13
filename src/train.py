@@ -94,6 +94,16 @@ def main(cfg: DictConfig):
 
     # metrics
     metrics = build_metrics(cfg.metrics, device)
+    metrics_blur = None
+
+    # Check for blur metrics requirement
+    model_cfg = getattr(model, "cfg", None)
+    if model_cfg:
+        use_blurring = getattr(model_cfg, "use_blurring_block", False)
+        blur_type = getattr(model_cfg, "used_image_blurring_block", "")
+        if use_blurring and blur_type == "GT":
+            metrics_blur = build_metrics(cfg.metrics, device)
+            logger.info("Initialized metrics for Blur Image (Stage 1 monitoring).")
 
     checkpoint_mgr = CheckpointManager(
         save_dir=cfg.train.checkpoint.dir,
@@ -110,12 +120,19 @@ def main(cfg: DictConfig):
     for epoch in range(cfg.train.epochs):
         logger.info(f"Epoch {epoch + 1} | Training...")
         train_losses, train_metrics = train_one_epoch(
-            model, train_loader, optimizer, criterion, device, scaler, metrics
+            model,
+            train_loader,
+            optimizer,
+            criterion,
+            device,
+            scaler,
+            metrics,
+            metrics_blur,
         )
 
         logger.info(f"Epoch {epoch + 1} | Validating...")
         val_losses, val_metrics = validate(
-            model, val_loader, criterion, device, metrics
+            model, val_loader, criterion, device, metrics, metrics_blur
         )
 
         # Logging to TensorBoard
