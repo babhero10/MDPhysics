@@ -1,6 +1,6 @@
 stage: 3
 
-lr: 1e-3
+lr: 1e-5
 weight_decay: 1e-3
 epochs: 100
 batch_size: 16
@@ -37,8 +37,6 @@ checkpoint:
   monitor: ssim
   mode: max
 
-freeze: 
-  - depth_head
-  - motion_head
+freeze: []
 
 last_checkpoint: ""
