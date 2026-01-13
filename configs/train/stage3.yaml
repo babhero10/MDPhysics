@@ -32,7 +32,7 @@ scheduler:
 
 checkpoint:
   dir: "${hydra:runtime.output_dir}/checkpoints"
-  patience: 5
+  patience: 10
   min_delta: 1e-4
   monitor: ssim
   mode: max

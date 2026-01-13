@@ -4,7 +4,7 @@ lr: 1e-4
 weight_decay: 0.01
 epochs: 100
 batch_size: 16
-batch_size_val: 16
+batch_size_val: 8
 
 criterion:
   _target_: utils.losses.LossContainer
@@ -31,5 +31,5 @@ checkpoint:
   dir: "${hydra:runtime.output_dir}/checkpoints"
   patience: 5
   min_delta: 1e-4
-  monitor: ssim
+  monitor: ssim_blur
   mode: max
