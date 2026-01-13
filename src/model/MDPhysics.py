@@ -5,7 +5,7 @@ from transformers import AutoModel
 from typing import List, Dict, Optional
 from omegaconf import DictConfig
 from .mamba2_minimal import Mamba2, Mamba2Config
-import math
+
 
 class ResidualConvUnit(nn.Module):
     """Residual convolutional unit from RefineNet."""
@@ -727,7 +727,7 @@ class RefinementUNet(nn.Module):
 
         # Prediction
         residual = self.head(x)
-        return rgb + residual
+        return torch.clamp(rgb + residual, 0.0, 1.0)
 
 
 class DPT(nn.Module):
