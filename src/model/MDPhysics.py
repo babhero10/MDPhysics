@@ -904,6 +904,7 @@ class DPT(nn.Module):
         if self.cfg.used_image_blurring_block == "pred":
             outputs["blur_image"] = motion_blur(refined_rgb, depth, motion)
         elif self.cfg.used_image_blurring_block == "GT":
-            outputs["blur_image"] = motion_blur(gt_sharp, depth, motion)
+            if gt_sharp is not None:
+                outputs["blur_image"] = motion_blur(gt_sharp, depth, motion)
 
         return outputs

@@ -183,7 +183,7 @@ def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, dev
         blur_imgs = blur_imgs.to(device)
         sharp_imgs = sharp_imgs.to(device)
 
-        outputs = model(blur_imgs)
+        outputs = model(blur_imgs, gt_sharp=sharp_imgs)
 
         # Loop over each image in the batch
         for i in range(blur_imgs.size(0)):

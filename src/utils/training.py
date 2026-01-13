@@ -138,7 +138,7 @@ def train_one_epoch(
         targets = {"blur_image": blur, "sharp_image": sharp}
 
         with torch.amp.autocast("cuda"):  # FP16 forward
-            pred = model(blur, sharp)
+            pred = model(blur, gt_sharp=sharp)
             loss, loss_dict = criterion(pred, targets)
 
         # scale gradients
@@ -192,7 +192,7 @@ def validate(model, val_loader, criterion, device, metrics=None, metrics_blur=No
         targets = {"blur_image": blur, "sharp_image": sharp}
 
         with torch.amp.autocast("cuda"):
-            pred = model(blur, sharp)
+            pred = model(blur, gt_sharp=sharp)
             loss, loss_dict = criterion(pred, targets)
 
         # Accumulate losses (weighted by batch size)
