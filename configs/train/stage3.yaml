@@ -9,15 +9,14 @@ batch_size_val: 16
 criterion:
   _target_: utils.losses.LossContainer
   cfg:
-    # blur_image:
-    #   weight: 0.25
-    #   loss:
-    #     _target_: utils.losses.CharbonnierLoss
-    #     reduction: mean
+    blur_image:
+      weight: 0.25
+      loss:
+        _target_: utils.losses.CharbonnierLoss
+        reduction: mean
 
     sharp_image:
-      # weight: 0.75
-      weight: 1.0
+      weight: 0.75
       loss:
         _target_: utils.losses.CharbonnierLoss
         reduction: mean 

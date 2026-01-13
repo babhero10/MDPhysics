@@ -206,13 +206,10 @@ def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, dev
                 pred_sharp_tensor = outputs["sharp_image"][i]
                 target_sharp_tensor = sharp_imgs[i]
 
-                # Clamp for metrics
-                pred_sharp_clamped = torch.clamp(pred_sharp_tensor, 0, 1)
-
                 for name, metric in metrics.items():
                     metric.reset()
                     metric.update(
-                        pred_sharp_clamped.unsqueeze(0),
+                        pred_sharp_tensor.unsqueeze(0),
                         target_sharp_tensor.unsqueeze(0),
                     )
                     img_metrics[name] = metric.compute().item()

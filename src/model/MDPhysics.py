@@ -91,6 +91,7 @@ class FeatureFusionBlock(nn.Module):
 
         if len(xs) == 2:
             skip = xs[1]
+
             # Project skip connection if needed
             skip = self.skip_proj(skip)
 
@@ -155,7 +156,6 @@ class ReassembleBlock(nn.Module):
             W = W_img // patch_size
         else:
             # Fallback estimation if image_size not provided (assumes no registers)
-            # This path might still fail with registers if image_size is None
             N_spatial = T - 1
             H = W = int(N_spatial**0.5)
 
@@ -163,7 +163,6 @@ class ReassembleBlock(nn.Module):
 
         # Separate CLS token and patch tokens
         # We assume CLS is at index 0, and patches are the LAST N_spatial tokens
-        # Any tokens in between (e.g., indices 1 to T-N_spatial) are registers and ignored
         cls_token = tokens[:, 0:1, :]  # (B, 1, C)
         patch_tokens = tokens[:, -N_spatial:, :]  # (B, N_spatial, C)
 
@@ -240,33 +239,11 @@ class MotionHead(DPTHead):
         return motion
 
 
-class SharpImageHead(DPTHead):
-    """Sharp image prediction head outputting HxWx3."""
-
-    def __init__(self, in_channels: int, use_bn: bool = False):
-        super().__init__(in_channels, out_channels=3, use_bn=use_bn)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        sharp = super().forward(x)
-        # Ensure valid RGB range [0, 1]
-        sharp = torch.sigmoid(sharp)
-        return sharp
-
-
 def se3_exp_map(
     v: torch.Tensor, omega: torch.Tensor, t: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute SE(3) exponential map: exp(t * ξ̂) where ξ = (v, ω)
-
-    Args:
-        v: Linear velocity (B, 3, H, W) or (B, N, H, W, 3)
-        omega: Angular velocity (B, 3, H, W) or (B, N, H, W, 3)
-        t: Time scalar, (N,) tensor, or (B, N, H, W, 1)
-
-    Returns:
-        R: Rotation matrix (B, [N,] H, W, 3, 3)
-        T: Translation vector (B, [N,] H, W, 3)
     """
     # Handle both (B, 3, H, W) and (B, N, H, W, 3) formats
     if v.dim() == 4:  # (B, 3, H, W)
@@ -287,7 +264,6 @@ def se3_exp_map(
         if has_time_dim:
             t = t.view(1, -1, 1, 1, 1)  # (1, N, 1, 1, 1)
         else:
-            # Will need to add time dimension
             pass
         omega_t = omega * t
         v_t = v * t
@@ -355,8 +331,6 @@ def motion_blur(
 ) -> torch.Tensor:
     """
     Apply motion blur using vectorized SE(3) integration.
-
-    Optimized version that processes all time samples in parallel.
     """
     B, C, H, W = sharp_image.shape
     device = sharp_image.device
@@ -409,7 +383,6 @@ def motion_blur(
 
     # Compute SE(3) for all time samples at once
     R, T = se3_exp_map(v_expanded, omega_expanded, t_expanded)
-    # R: (B, N, H, W, 3, 3), T: (B, N, H, W, 3)
 
     # Expand P for all time samples: (B, H, W, 3) -> (B, N, H, W, 3)
     P_expanded = P.unsqueeze(1).expand(-1, N, -1, -1, -1)
@@ -458,9 +431,203 @@ def motion_blur(
     return blurred_image
 
 
+# --- New Architecture Classes ---
+
+
+class FusionBlock(nn.Module):
+    """
+    Fusion block for combining RGB, Depth, and Motion features.
+    """
+
+    def __init__(self, channels: int):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(3 * channels, channels, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, channels, 3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(
+        self, f_rgb: torch.Tensor, f_depth: torch.Tensor, f_motion: torch.Tensor
+    ) -> torch.Tensor:
+        f = torch.cat([f_rgb, f_depth, f_motion], dim=1)
+        return self.conv(f)
+
+
+class SimpleEncoder(nn.Module):
+    """
+    Lightweight encoder for specific modality.
+    """
+
+    def __init__(self, in_channels: int, base_channels: int, num_stages: int = 5):
+        super().__init__()
+        self.stages = nn.ModuleList()
+        self.downsamples = nn.ModuleList()
+
+        # Initial stem
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, base_channels, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(base_channels, base_channels, 3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+        curr_channels = base_channels
+        for i in range(num_stages - 1):  # -1 because stem is stage 0
+            # Downsample
+            self.downsamples.append(
+                nn.Conv2d(curr_channels, curr_channels * 2, 3, stride=2, padding=1)
+            )
+            curr_channels *= 2
+            # Conv block
+            self.stages.append(
+                nn.Sequential(
+                    nn.Conv2d(curr_channels, curr_channels, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(curr_channels, curr_channels, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                )
+            )
+
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        features = []
+        x = self.stem(x)
+        features.append(x)  # Scale 0
+
+        for down, stage in zip(self.downsamples, self.stages):
+            x = down(x)
+            x = stage(x)
+            features.append(x)  # Scale i+1
+
+        return features
+
+
+class RefinementUNet(nn.Module):
+    """
+    U-Net for image refinement using RGB, Depth, and Motion.
+    Strategy 1: Multi-encoder + feature-level fusion.
+    """
+
+    def __init__(self, base_channels: int = 32):
+        super().__init__()
+
+        # 3 Encoders (RGB, Depth, Motion)
+        # We need 5 scales to reach H/16: 0(H), 1(H/2), 2(H/4), 3(H/8), 4(H/16)
+        num_stages = 5
+        self.enc_rgb = SimpleEncoder(3, base_channels, num_stages)
+        self.enc_depth = SimpleEncoder(1, base_channels, num_stages)
+        self.enc_motion = SimpleEncoder(
+            6, base_channels, num_stages
+        )  # 6 channels for motion
+
+        # Fusion Blocks at each scale
+        self.fusion_blocks = nn.ModuleList()
+        curr_channels = base_channels
+        channels_list = []
+        for _ in range(num_stages):
+            self.fusion_blocks.append(FusionBlock(curr_channels))
+            channels_list.append(curr_channels)
+            curr_channels *= 2
+
+        # Bottleneck (at the smallest resolution, features from last fusion)
+        last_channels = channels_list[-1]
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(last_channels, last_channels, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(last_channels, last_channels, 3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+        # Decoder
+        self.decoder_upsamples = nn.ModuleList()
+        self.decoder_blocks = nn.ModuleList()
+
+        # Iterate backwards from second to last scale
+        # Scales: 0, 1, 2, 3, 4. Bottleneck is at 4.
+        # Decoder will go 4->3, 3->2, 2->1, 1->0
+
+        d_channels = last_channels
+        for i in range(num_stages - 2, -1, -1):  # 3, 2, 1, 0
+            # Upsample from d_channels to channels_list[i]
+            target_channels = channels_list[i]
+
+            self.decoder_upsamples.append(
+                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            )
+
+            # Input to block will be: (Upsampled Feature) + (Skip Feature from Fusion)
+            # Upsampled Feature channels: d_channels (we need to project if different?)
+            # Usually U-Net halves channels during upsample conv
+
+            # Let's add a projection/conv before concat if we want to reduce channels
+            # Or standard UNet: UpConv(In -> In/2) -> Concat(In/2, Skip) -> Conv(In -> In/2)
+
+            self.decoder_blocks.append(
+                nn.Sequential(
+                    nn.Conv2d(
+                        d_channels + target_channels, target_channels, 3, padding=1
+                    ),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(target_channels, target_channels, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                )
+            )
+            d_channels = target_channels  # Update for next iteration
+
+        # Final head to predict residual
+        self.head = nn.Conv2d(base_channels, 3, 3, padding=1)
+
+    def forward(
+        self, rgb: torch.Tensor, depth: torch.Tensor, motion: torch.Tensor
+    ) -> torch.Tensor:
+        # Encode
+        feats_rgb = self.enc_rgb(rgb)
+        feats_depth = self.enc_depth(depth)
+        feats_motion = self.enc_motion(motion)
+
+        # Fuse
+        fused_feats = []
+        for i in range(len(feats_rgb)):
+            fused = self.fusion_blocks[i](feats_rgb[i], feats_depth[i], feats_motion[i])
+            fused_feats.append(fused)
+
+        # Bottleneck
+        x = self.bottleneck(fused_feats[-1])
+
+        # Decode
+        # We start from the bottleneck output which corresponds to the last scale
+        # And we skip-connect the fused features from previous scales
+
+        for i, (up, block) in enumerate(
+            zip(self.decoder_upsamples, self.decoder_blocks)
+        ):
+            # Index of skip connection: (N-2) - i
+            # If N=5, indices are 4 (bottleneck), 3, 2, 1, 0
+            # i=0: skip index 3
+            skip_idx = (len(fused_feats) - 2) - i
+            skip = fused_feats[skip_idx]
+
+            x = up(x)
+
+            # Handle potential size mismatch due to odd dimensions
+            if x.shape[-2:] != skip.shape[-2:]:
+                x = F.interpolate(
+                    x, size=skip.shape[-2:], mode="bilinear", align_corners=True
+                )
+
+            x = torch.cat([x, skip], dim=1)
+            x = block(x)
+
+        # Prediction
+        residual = self.head(x)
+        return rgb + residual
+
+
 class DPT(nn.Module):
     """
-    Dense Prediction Transformer with configurable backbone and multiple heads.
+    Dense Prediction Transformer with configurable backbone and separate Fusion paths,
+    plus a Refinement U-Net.
     """
 
     def __init__(self, cfg: DictConfig):
@@ -499,28 +666,25 @@ class DPT(nn.Module):
                 )
             )
 
-        # Fusion blocks
-        self.fusion_blocks = nn.ModuleList()
-        num_layers = len(self.feature_layers)
+        # Two separate fusion paths: one for Depth, one for Motion
+        self.depth_fusion_blocks = nn.ModuleList()
+        self.motion_fusion_blocks = nn.ModuleList()
 
-        # Get fusion channels from config or default to implicit assumptions
+        num_layers = len(self.feature_layers)
         fusion_channels = getattr(cfg.decoder, "fusion_channels", [64, 128, 256, 256])
 
         assert (
             len(fusion_channels) == num_layers
         ), f"Number of fusion channel widths ({len(fusion_channels)}) must match number of layers ({num_layers})"
 
+        # Initialize Fusion Blocks for both paths
         for i in range(num_layers):
             expand = i != num_layers - 1
-
-            # Use explicit channel width from config
             f = fusion_channels[i]
-
-            # Skip channels are always from reassembled blocks (constant width)
-            # Block 0 doesn't take a skip connection in the loop structure (it's the final head)
             skip_ch = cfg.decoder.features if i > 0 else 0
 
-            self.fusion_blocks.append(
+            # Depth Fusion Path
+            self.depth_fusion_blocks.append(
                 FeatureFusionBlock(
                     features=f,
                     skip_channels=skip_ch,
@@ -531,61 +695,43 @@ class DPT(nn.Module):
                 )
             )
 
-        # Separate fusion blocks for sharp head if requested
-        self.separate_sharp_head = getattr(cfg.decoder, "separate_sharp_head", False)
-        self.sharp_fusion_blocks = nn.ModuleList()
-
-        if self.separate_sharp_head:
-            for i in range(num_layers):
-                expand = i != num_layers - 1
-                f = fusion_channels[i]
-                skip_ch = cfg.decoder.features if i > 0 else 0
-
-                self.sharp_fusion_blocks.append(
-                    FeatureFusionBlock(
-                        features=f,
-                        skip_channels=skip_ch,
-                        use_bn=cfg.decoder.use_bn,
-                        deconv=cfg.decoder.use_deconv,
-                        expand=expand,
-                        upsample=(i != 0),
-                    )
+            # Motion Fusion Path
+            self.motion_fusion_blocks.append(
+                FeatureFusionBlock(
+                    features=f,
+                    skip_channels=skip_ch,
+                    use_bn=cfg.decoder.use_bn,
+                    deconv=cfg.decoder.use_deconv,
+                    expand=expand,
+                    upsample=(i != 0),
                 )
+            )
 
         # Prediction heads
         final_features = cfg.decoder.features // (2 ** (num_layers - 1))
 
         self.depth_head = DepthHead(in_channels=final_features, use_bn=cfg.heads.use_bn)
-
         self.motion_head = MotionHead(
             in_channels=final_features, use_bn=cfg.heads.use_bn
         )
 
-        self.sharp_head = SharpImageHead(
-            in_channels=final_features, use_bn=cfg.heads.use_bn
-        )
+        # Refinement U-Net (Strategy 1)
+        # Using a default base_channels of 32 for "lightweight" encoders
+        self.refinement_net = RefinementUNet(base_channels=32)
 
     def forward_backbone(self, x: torch.Tensor) -> List[torch.Tensor]:
         """Extract features from backbone at multiple layers."""
         outputs = self.backbone(x, output_hidden_states=True, return_dict=True)
-
         hidden_states = outputs.hidden_states
-
-        # Extract features from specified layers
         features = []
         for layer_idx in self.feature_layers:
-            # layer_idx can be negative (from end) or positive
             features.append(hidden_states[layer_idx])
-
         return features
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
         Args:
             x: Input image (B, 3, H, W)
-
-        Returns:
-            Dictionary containing predictions and intermediate outputs
         """
         # Pad input to be divisible by patch_size (16)
         H, W = x.shape[2], x.shape[3]
@@ -601,7 +747,7 @@ class DPT(nn.Module):
         # Extract multi-scale features from backbone
         backbone_features = self.forward_backbone(x_padded)
 
-        # Reassemble features into spatial representations
+        # Reassemble features
         reassembled = []
         for feat, reassemble_block in zip(backbone_features, self.reassemble_blocks):
             reassembled.append(
@@ -612,47 +758,42 @@ class DPT(nn.Module):
                 )
             )
 
-        # Progressive fusion (from deep to shallow)
-        fused = reassembled[-1]
+        # --- Depth Path ---
+        fused_depth = reassembled[-1]
         for i in range(len(reassembled) - 1, 0, -1):
-            fused = self.fusion_blocks[i](fused, reassembled[i - 1])
+            fused_depth = self.depth_fusion_blocks[i](fused_depth, reassembled[i - 1])
+        fused_depth = self.depth_fusion_blocks[0](fused_depth)
 
-        # Final fusion
-        fused = self.fusion_blocks[0](fused)
+        depth = self.depth_head(fused_depth)  # (B, 1, H, W)
 
-        # Separate fusion for sharp head
-        fused_sharp = fused
-        if self.separate_sharp_head:
-            fused_sharp = reassembled[-1]
-            for i in range(len(reassembled) - 1, 0, -1):
-                fused_sharp = self.sharp_fusion_blocks[i](
-                    fused_sharp, reassembled[i - 1]
-                )
-            fused_sharp = self.sharp_fusion_blocks[0](fused_sharp)
+        # --- Motion Path ---
+        fused_motion = reassembled[-1]
+        for i in range(len(reassembled) - 1, 0, -1):
+            fused_motion = self.motion_fusion_blocks[i](
+                fused_motion, reassembled[i - 1]
+            )
+        fused_motion = self.motion_fusion_blocks[0](fused_motion)
 
-        # Generate predictions from heads
-        depth = self.depth_head(fused)  # (B, 1, H, W)
-        motion = self.motion_head(fused)  # (B, 6, H, W)
-        sharp = self.sharp_head(fused_sharp)  # (B, 3, H, W)
+        motion = self.motion_head(fused_motion)  # (B, 6, H, W)
 
-        # Crop back to original size
+        # Crop back to original size (for intermediate outputs)
         if pad_h > 0 or pad_w > 0:
             depth = depth[..., :H, :W]
             motion = motion[..., :H, :W]
-            sharp = sharp[..., :H, :W]
-            fused = fused[..., :H, :W]
 
+        # --- Refinement U-Net ---
+        # Takes original input x (unpadded), and the predicted depth/motion
+        refined_rgb = self.refinement_net(x, depth, motion)
+
+        # Outputs
         outputs = {
             "depth": depth,
             "motion": motion,
-            "sharp_image": sharp,
-            "features": fused,
+            "sharp_image": refined_rgb,  # This is the final output
         }
 
-        if self.cfg.use_blurring_block:
-            if self.cfg.used_image_blurring_block == "pred":
-                outputs["blur_image"] = motion_blur(sharp, depth, motion)
-            elif self.cfg.used_image_blurring_block == "GT":
-                outputs["blur_image"] = motion_blur(x, depth, motion)
+        # Simulated blur (optional, for logging or self-supervised losses)
+        # Using the refined (sharp) image to simulate blur
+        outputs["blur_image"] = motion_blur(refined_rgb, depth, motion)
 
         return outputs
