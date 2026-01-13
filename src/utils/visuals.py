@@ -91,12 +91,15 @@ class DPTVisualizer:
         # Prepare visualizations
         vis_items = [("Input", image)]
 
+        if "blur_image" in predictions:
+            blur = predictions["blur_image"]
+            if blur.ndim == 3:
+                blur = blur.transpose(1, 2, 0)
+            blur = (blur * 255).astype(np.uint8)
+            vis_items.append(("Blur Image", blur))
+
         if ground_truth is not None:
             vis_items.append(("Ground Truth", ground_truth))
-
-        if "depth" in predictions:
-            depth_vis = DPTVisualizer.visualize_depth(predictions["depth"])
-            vis_items.append(("Depth", depth_vis))
 
         if "sharp_image" in predictions:
             sharp = predictions["sharp_image"]
@@ -105,12 +108,9 @@ class DPTVisualizer:
             sharp = (sharp * 255).astype(np.uint8)
             vis_items.append(("Predicted Sharp", sharp))
 
-        if "blur_image" in predictions:
-            blur = predictions["blur_image"]
-            if blur.ndim == 3:
-                blur = blur.transpose(1, 2, 0)
-            blur = (blur * 255).astype(np.uint8)
-            vis_items.append(("Blur Image", blur))
+        if "depth" in predictions:
+            depth_vis = DPTVisualizer.visualize_depth(predictions["depth"])
+            vis_items.append(("Depth", depth_vis))
 
         if "motion" in predictions:
             motion = predictions["motion"]

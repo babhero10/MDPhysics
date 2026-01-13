@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModel
-from typing import List, Dict
+from typing import List, Dict, Optional
 from omegaconf import DictConfig
+from src.model.mamba2_minimal import Mamba2, Mamba2Config
+import math
 
 
 class ResidualConvUnit(nn.Module):
@@ -503,13 +505,116 @@ class SimpleEncoder(nn.Module):
         return features
 
 
+class SSMBottleneck(nn.Module):
+    """
+    Bottleneck using Mamba2 SSM with 4-way directional scanning.
+    """
+
+    def __init__(
+        self, channels: int, num_layers: int = 2, d_state: int = 64, expand: int = 2
+    ):
+        super().__init__()
+        self.channels = channels
+
+        self.config = Mamba2Config(
+            d_model=channels,
+            n_layer=num_layers,
+            d_state=d_state,
+            expand=expand,
+        )
+
+        self.layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.layers.append(
+                nn.ModuleDict(
+                    {"norm": nn.LayerNorm(channels), "mixer": Mamba2(self.config)}
+                )
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, C, H, W = x.shape
+
+        # Flatten: (B, C, H, W) -> (B, H*W, C)
+        x_flat = x.flatten(2).transpose(1, 2)
+
+        # Padding for chunk_size
+        seq_len = x_flat.shape[1]
+        chunk_size = self.config.chunk_size
+        pad_len = (chunk_size - (seq_len % chunk_size)) % chunk_size
+
+        if pad_len > 0:
+            x_flat = F.pad(x_flat, (0, 0, 0, pad_len))
+
+        residual = x_flat
+
+        for layer in self.layers:
+            norm_x = layer["norm"](residual)
+            mixer = layer["mixer"]
+
+            # 1. Forward scan
+            out_f, _ = mixer(norm_x)
+
+            # 2. Backward scan
+            out_b, _ = mixer(norm_x.flip([1]))
+            out_b = out_b.flip([1])
+
+            # Prepare Transposed inputs
+            # Unpad current norm_x to get valid 2D spatial map
+            valid_x = norm_x[:, :seq_len, :]
+            img_x = valid_x.transpose(1, 2).reshape(B, C, H, W)
+
+            # Transpose (Swap H and W)
+            img_t = img_x.transpose(2, 3)  # (B, C, W, H)
+            flat_t = img_t.flatten(2).transpose(1, 2)  # (B, W*H, C)
+
+            if pad_len > 0:
+                flat_t_padded = F.pad(flat_t, (0, 0, 0, pad_len))
+            else:
+                flat_t_padded = flat_t
+
+            # 3. Transposed Forward
+            out_tf, _ = mixer(flat_t_padded)
+
+            # 4. Transposed Backward
+            out_tb, _ = mixer(flat_t_padded.flip([1]))
+            out_tb = out_tb.flip([1])
+
+            # Unpad and reshape transposed outputs back to original domain
+            out_tf = out_tf[:, :seq_len, :]
+            out_tb = out_tb[:, :seq_len, :]
+
+            out_tf_img = out_tf.transpose(1, 2).reshape(B, C, W, H).transpose(2, 3)
+            out_tf_final = out_tf_img.flatten(2).transpose(1, 2)
+
+            out_tb_img = out_tb.transpose(1, 2).reshape(B, C, W, H).transpose(2, 3)
+            out_tb_final = out_tb_img.flatten(2).transpose(1, 2)
+
+            # Sum aggregation (using unpadded valid outputs for 1 & 2)
+            out_f_valid = out_f[:, :seq_len, :]
+            out_b_valid = out_b[:, :seq_len, :]
+
+            aggregated = out_f_valid + out_b_valid + out_tf_final + out_tb_final
+
+            # Residual update
+            valid_residual = residual[:, :seq_len, :] + aggregated
+
+            if pad_len > 0:
+                residual = F.pad(valid_residual, (0, 0, 0, pad_len))
+            else:
+                residual = valid_residual
+
+        # Final output
+        final_out = residual[:, :seq_len, :]
+        return final_out.transpose(1, 2).reshape(B, C, H, W)
+
+
 class RefinementUNet(nn.Module):
     """
     U-Net for image refinement using RGB, Depth, and Motion.
     Strategy 1: Multi-encoder + feature-level fusion.
     """
 
-    def __init__(self, base_channels: int = 32):
+    def __init__(self, base_channels: int = 32, ssm_cfg: Optional[DictConfig] = None):
         super().__init__()
 
         # 3 Encoders (RGB, Depth, Motion)
@@ -532,12 +637,21 @@ class RefinementUNet(nn.Module):
 
         # Bottleneck (at the smallest resolution, features from last fusion)
         last_channels = channels_list[-1]
-        self.bottleneck = nn.Sequential(
-            nn.Conv2d(last_channels, last_channels, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(last_channels, last_channels, 3, padding=1),
-            nn.ReLU(inplace=True),
-        )
+
+        if ssm_cfg is not None:
+            self.bottleneck = SSMBottleneck(
+                channels=last_channels,
+                num_layers=ssm_cfg.n_layer,
+                d_state=ssm_cfg.d_state,
+                expand=ssm_cfg.expand,
+            )
+        else:
+            self.bottleneck = nn.Sequential(
+                nn.Conv2d(last_channels, last_channels, 3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(last_channels, last_channels, 3, padding=1),
+                nn.ReLU(inplace=True),
+            )
 
         # Decoder
         self.decoder_upsamples = nn.ModuleList()
@@ -555,13 +669,6 @@ class RefinementUNet(nn.Module):
             self.decoder_upsamples.append(
                 nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
             )
-
-            # Input to block will be: (Upsampled Feature) + (Skip Feature from Fusion)
-            # Upsampled Feature channels: d_channels (we need to project if different?)
-            # Usually U-Net halves channels during upsample conv
-
-            # Let's add a projection/conv before concat if we want to reduce channels
-            # Or standard UNet: UpConv(In -> In/2) -> Concat(In/2, Skip) -> Conv(In -> In/2)
 
             self.decoder_blocks.append(
                 nn.Sequential(
@@ -717,7 +824,8 @@ class DPT(nn.Module):
 
         # Refinement U-Net (Strategy 1)
         # Using a default base_channels of 32 for "lightweight" encoders
-        self.refinement_net = RefinementUNet(base_channels=32)
+        ssm_cfg = getattr(cfg, "ssm", None)
+        self.refinement_net = RefinementUNet(base_channels=32, ssm_cfg=ssm_cfg)
 
     def forward_backbone(self, x: torch.Tensor) -> List[torch.Tensor]:
         """Extract features from backbone at multiple layers."""
@@ -789,11 +897,12 @@ class DPT(nn.Module):
         outputs = {
             "depth": depth,
             "motion": motion,
-            "sharp_image": refined_rgb,  # This is the final output
+            "sharp_image": refined_rgb,
         }
 
-        # Simulated blur (optional, for logging or self-supervised losses)
-        # Using the refined (sharp) image to simulate blur
-        outputs["blur_image"] = motion_blur(refined_rgb, depth, motion)
+        if self.cfg.used_image_blurring_block == "pred":
+            outputs["blur_image"] = motion_blur(refined_rgb, depth, motion)
+        elif self.cfg.used_image_blurring_block == "GT":
+            outputs["blur_image"] = motion_blur(x, depth, motion)
 
         return outputs

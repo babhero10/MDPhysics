@@ -3,20 +3,20 @@ stage: 3
 lr: 1e-4
 weight_decay: 0.01
 epochs: 100
-batch_size: 32
-batch_size_val: 16
+batch_size: 16
+batch_size_val: 8
 
 criterion:
   _target_: utils.losses.LossContainer
   cfg:
     blur_image:
-      weight: 0.25
+      weight: 1.0
       loss:
         _target_: utils.losses.CharbonnierLoss
         reduction: mean
 
     sharp_image:
-      weight: 0.75
+      weight: 2.0
       loss:
         _target_: utils.losses.CharbonnierLoss
         reduction: mean 
