@@ -4,9 +4,8 @@ import torch.nn.functional as F
 from transformers import AutoModel
 from typing import List, Dict, Optional
 from omegaconf import DictConfig
-from src.model.mamba2_minimal import Mamba2, Mamba2Config
+from .mamba2_minimal import Mamba2, Mamba2Config
 import math
-
 
 class ResidualConvUnit(nn.Module):
     """Residual convolutional unit from RefineNet."""
