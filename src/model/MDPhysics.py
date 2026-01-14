@@ -787,15 +787,20 @@ class DPT(nn.Module):
                 )
             )
 
-        checkpoint = self.depth_prior_cfg.checkpoint
-        freeze_backbone = self.depth_prior_cfg.freeze_backbone
-        fine_tune_head = self.depth_prior_cfg.fine_tune_head
-        default_focal = getattr(self.depth_prior_cfg, "default_focal_length", 700.0)
+        # External Depth Model (Mandatory)
+        self.depth_prior_cfg = getattr(cfg, "depth_prior", None)
+        checkpoint = "depth-anything/da3mono-large"
+        freeze_backbone = True
+        default_focal = 700.0
+
+        if self.depth_prior_cfg:
+            checkpoint = getattr(self.depth_prior_cfg, "checkpoint", checkpoint)
+            freeze_backbone = getattr(self.depth_prior_cfg, "freeze_backbone", True)
+            default_focal = getattr(self.depth_prior_cfg, "default_focal_length", 700.0)
 
         self.external_depth = ExternalDepthModel(
             checkpoint=checkpoint,
             freeze_backbone=freeze_backbone,
-            fine_tune_head=fine_tune_head,
             default_focal_length=default_focal,
         )
 
@@ -882,7 +887,13 @@ class DPT(nn.Module):
         # --- Depth Path (External Scale-Invariant) ---
         # 1. Get raw depth from External Model
         ext_out = self.external_depth(x)
-        depth_raw = ext_out["depth"]  # (B, 1, H, W)
+        depth_raw = ext_out["depth"]  # Expected (B, N, H, W) or (B, H, W)
+
+        # Ensure depth_raw is (B, 1, H, W)
+        if depth_raw.dim() == 3:
+            depth_raw = depth_raw.unsqueeze(1)
+        elif depth_raw.dim() == 4 and depth_raw.shape[1] > 1:
+            depth_raw = depth_raw[:, 0:1, :, :]  # Take first view
 
         # 2. Scale-Invariant Normalization (Option A)
         # Ensure positive
