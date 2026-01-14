@@ -102,7 +102,9 @@ def build_model(cfg, device):
     # Load last checkpoint if specified
     last_ckpt = OmegaConf.select(cfg, "train.last_checkpoint")
     if last_ckpt:
-        model.load_state_dict(torch.load(last_ckpt, map_location=device))
+        model.load_state_dict(
+            torch.load(last_ckpt, weights_only=True, map_location=device)
+        )
 
     return model
 

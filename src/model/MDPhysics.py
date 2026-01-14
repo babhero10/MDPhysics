@@ -5,10 +5,13 @@ from transformers import AutoModel
 from typing import List, Dict, Optional
 from omegaconf import DictConfig
 from .mamba2_minimal import Mamba2, Mamba2Config
+from .external_depth import ExternalDepthModel
 
 
 class ResidualConvUnit(nn.Module):
     """Residual convolutional unit from RefineNet."""
+
+    # ... (no changes to this class)
 
     def __init__(
         self,
@@ -115,6 +118,8 @@ class FeatureFusionBlock(nn.Module):
 
 class ReassembleBlock(nn.Module):
     """Reassemble tokens into image-like representation."""
+
+    # ... (no changes)
 
     def __init__(
         self,
@@ -225,9 +230,8 @@ class DepthHead(DPTHead):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = super().forward(x)
         # 1 & 2: Predict inverse depth and lower bound
-        # disp = eps + softplus(out)
-        # depth = 1 / disp
-        eps = 1e-2
+        # Increase eps to 0.1 to cap max depth at 10.0 (prevents infinite depth cheat)
+        eps = 0.1
         disp = F.softplus(out) + eps
         depth = 1.0 / disp
         return depth
@@ -247,6 +251,7 @@ class MotionHead(DPTHead):
 def se3_exp_map(
     v: torch.Tensor, omega: torch.Tensor, t: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    # ... (no changes)
     """
     Compute SE(3) exponential map: exp(t * ξ̂) where ξ = (v, ω)
     """
@@ -334,6 +339,7 @@ def motion_blur(
     num_samples: int = 16,
     exposure_time: float = 1.0,
 ) -> torch.Tensor:
+    # ... (no changes)
     """
     Apply motion blur using vectorized SE(3) integration.
     """
@@ -440,6 +446,7 @@ def motion_blur(
 
 
 class FusionBlock(nn.Module):
+    # ... (no changes)
     """
     Fusion block for combining RGB, Depth, and Motion features.
     """
@@ -461,6 +468,7 @@ class FusionBlock(nn.Module):
 
 
 class SimpleEncoder(nn.Module):
+    # ... (no changes)
     """
     Lightweight encoder for specific modality.
     """
@@ -509,6 +517,7 @@ class SimpleEncoder(nn.Module):
 
 
 class SSMBottleneck(nn.Module):
+    # ... (no changes)
     """
     Bottleneck using Mamba2 SSM with 4-way directional scanning.
     """
@@ -612,6 +621,7 @@ class SSMBottleneck(nn.Module):
 
 
 class RefinementUNet(nn.Module):
+    # ... (no changes)
     """
     U-Net for image refinement using RGB, Depth, and Motion.
     Strategy 1: Multi-encoder + feature-level fusion.
@@ -738,6 +748,7 @@ class DPT(nn.Module):
     """
     Dense Prediction Transformer with configurable backbone and separate Fusion paths,
     plus a Refinement U-Net.
+    Refactored to rely exclusively on External Depth Prior (Scale-Invariant).
     """
 
     def __init__(self, cfg: DictConfig):
@@ -776,8 +787,19 @@ class DPT(nn.Module):
                 )
             )
 
-        # Two separate fusion paths: one for Depth, one for Motion
-        self.depth_fusion_blocks = nn.ModuleList()
+        checkpoint = self.depth_prior_cfg.checkpoint
+        freeze_backbone = self.depth_prior_cfg.freeze_backbone
+        fine_tune_head = self.depth_prior_cfg.fine_tune_head
+        default_focal = getattr(self.depth_prior_cfg, "default_focal_length", 700.0)
+
+        self.external_depth = ExternalDepthModel(
+            checkpoint=checkpoint,
+            freeze_backbone=freeze_backbone,
+            fine_tune_head=fine_tune_head,
+            default_focal_length=default_focal,
+        )
+
+        # Motion Fusion Path (Internal Depth path removed)
         self.motion_fusion_blocks = nn.ModuleList()
 
         num_layers = len(self.feature_layers)
@@ -787,25 +809,12 @@ class DPT(nn.Module):
             len(fusion_channels) == num_layers
         ), f"Number of fusion channel widths ({len(fusion_channels)}) must match number of layers ({num_layers})"
 
-        # Initialize Fusion Blocks for both paths
+        # Initialize Fusion Blocks for Motion path
         for i in range(num_layers):
             expand = i != num_layers - 1
             f = fusion_channels[i]
             skip_ch = cfg.decoder.features if i > 0 else 0
 
-            # Depth Fusion Path
-            self.depth_fusion_blocks.append(
-                FeatureFusionBlock(
-                    features=f,
-                    skip_channels=skip_ch,
-                    use_bn=cfg.decoder.use_bn,
-                    deconv=cfg.decoder.use_deconv,
-                    expand=expand,
-                    upsample=(i != 0),
-                )
-            )
-
-            # Motion Fusion Path
             self.motion_fusion_blocks.append(
                 FeatureFusionBlock(
                     features=f,
@@ -817,10 +826,9 @@ class DPT(nn.Module):
                 )
             )
 
-        # Prediction heads
+        # Prediction heads (Only Motion)
         final_features = cfg.decoder.features // (2 ** (num_layers - 1))
 
-        self.depth_head = DepthHead(in_channels=final_features, use_bn=cfg.heads.use_bn)
         self.motion_head = MotionHead(
             in_channels=final_features, use_bn=cfg.heads.use_bn
         )
@@ -871,13 +879,26 @@ class DPT(nn.Module):
                 )
             )
 
-        # --- Depth Path ---
-        fused_depth = reassembled[-1]
-        for i in range(len(reassembled) - 1, 0, -1):
-            fused_depth = self.depth_fusion_blocks[i](fused_depth, reassembled[i - 1])
-        fused_depth = self.depth_fusion_blocks[0](fused_depth)
+        # --- Depth Path (External Scale-Invariant) ---
+        # 1. Get raw depth from External Model
+        ext_out = self.external_depth(x)
+        depth_raw = ext_out["depth"]  # (B, 1, H, W)
 
-        depth = self.depth_head(fused_depth)  # (B, 1, H, W)
+        # 2. Scale-Invariant Normalization (Option A)
+        # Ensure positive
+        depth = F.softplus(depth_raw) + 1e-3
+        # Normalize mean to 1.0 per image
+        # This resolves the scale ambiguity: Network learns velocity relative to mean depth = 1
+        mean_depth = depth.mean(dim=(2, 3), keepdim=True)
+        depth = depth / (mean_depth + 1e-6)
+
+        # Extract intrinsics if available
+        camera_matrix = None
+        if self.depth_prior_cfg and self.depth_prior_cfg.get(
+            "use_predicted_intrinsics", False
+        ):
+            if "intrinsics" in ext_out:
+                camera_matrix = ext_out["intrinsics"]
 
         # --- Motion Path ---
         fused_motion = reassembled[-1]
@@ -891,7 +912,6 @@ class DPT(nn.Module):
 
         # Crop back to original size (for intermediate outputs)
         if pad_h > 0 or pad_w > 0:
-            depth = depth[..., :H, :W]
             motion = motion[..., :H, :W]
 
         # --- Refinement U-Net ---
@@ -907,12 +927,20 @@ class DPT(nn.Module):
 
         if self.cfg.used_image_blurring_block == "pred":
             outputs["blur_image"] = motion_blur(
-                refined_rgb, depth, motion, exposure_time=1.0
+                refined_rgb,
+                depth,
+                motion,
+                camera_matrix=camera_matrix,
+                exposure_time=1.0,
             )
         elif self.cfg.used_image_blurring_block == "GT":
             if gt_sharp is not None:
                 outputs["blur_image"] = motion_blur(
-                    gt_sharp, depth, motion, exposure_time=1.0
+                    gt_sharp,
+                    depth,
+                    motion,
+                    camera_matrix=camera_matrix,
+                    exposure_time=1.0,
                 )
 
         return outputs

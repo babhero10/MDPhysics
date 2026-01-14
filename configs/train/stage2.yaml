@@ -3,7 +3,7 @@ stage: 2
 lr: 1e-4
 weight_decay: 1e-3
 epochs: 100
-batch_size: 16
+batch_size: 32
 batch_size_val: 8
 
 criterion:
@@ -25,10 +25,10 @@ scheduler:
   T_max: ${train.epochs}
 
 freeze:
+  - backbone
   - reassemble_blocks
-  - depth_fusion_blocks
+  - external_depth
   - motion_fusion_blocks
-  - depth_head
   - motion_head
 
 checkpoint:

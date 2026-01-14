@@ -3,7 +3,7 @@ stage: 3
 lr: 1e-5
 weight_decay: 1e-3
 epochs: 100
-batch_size: 16
+batch_size: 32
 batch_size_val: 8
 
 criterion:

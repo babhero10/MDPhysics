@@ -22,8 +22,14 @@ arch:
     heads:
       use_bn: false  # Use batch normalization in prediction heads
 
+    depth_prior:
+      checkpoint: "depth-anything/da3-large"
+      freeze_backbone: true
+      fine_tune_head: false
+      default_focal_length: 700.0
+
     use_blurring_block: true
-    used_image_blurring_block: "GT" # or GT
+    used_image_blurring_block: "GT" # or pred
 
     ssm:
       d_state: 64
