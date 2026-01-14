@@ -19,7 +19,9 @@ def read_camera_poses(pose_file):
     return poses
 
 
-def create_point_cloud(npz_folder, pose_file, output_ply, conf_threshold_coef, sample_ratio=1.0):
+def create_point_cloud(
+    npz_folder, pose_file, output_ply, conf_threshold_coef, sample_ratio=1.0
+):
 
     poses = read_camera_poses(pose_file)
     print(f"Read {len(poses)} camera poses")
@@ -95,17 +97,29 @@ def create_point_cloud(npz_folder, pose_file, output_ply, conf_threshold_coef, s
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create point cloud from DA3-Long output")
-    parser.add_argument("--npz_folder", type=str, required=True, help="Path to npz folder")
-    parser.add_argument("--pose_file", type=str, required=True, help="Path to pose file")
+    parser = argparse.ArgumentParser(
+        description="Create point cloud from DA3-Long output"
+    )
+    parser.add_argument(
+        "--npz_folder", type=str, required=True, help="Path to npz folder"
+    )
+    parser.add_argument(
+        "--pose_file", type=str, required=True, help="Path to pose file"
+    )
     parser.add_argument(
         "--output_file", type=str, default="output.ply", help="Path to output PLY file"
     )
     parser.add_argument(
-        "--conf_threshold_coef", type=float, default=0.5, help="Confidence threshold coefficient"
+        "--conf_threshold_coef",
+        type=float,
+        default=0.5,
+        help="Confidence threshold coefficient",
     )
     parser.add_argument(
-        "--sample_ratio", type=float, default=0.015, help="Sample ratio for downsampling"
+        "--sample_ratio",
+        type=float,
+        default=0.015,
+        help="Sample ratio for downsampling",
     )
 
     args = parser.parse_args()

@@ -132,21 +132,28 @@ class SevenScenes(Dataset):
         gt_mesh_path = os.path.join(self.data_root, "7Scenes", "meshes", f"{scene}.ply")
 
         # Fixed intrinsics for all images
-        ixt = np.array([
-            [self.fx, 0, self.cx],
-            [0, self.fy, self.cy],
-            [0, 0, 1],
-        ], dtype=np.float32)
+        ixt = np.array(
+            [
+                [self.fx, 0, self.cx],
+                [0, self.fy, self.cy],
+                [0, 0, 1],
+            ],
+            dtype=np.float32,
+        )
 
-        out = Dict({
-            "image_files": [],
-            "extrinsics": [],
-            "intrinsics": [],
-            "aux": Dict({
-                "gt_mesh_path": gt_mesh_path,
-                "gt_depth_files": [],
-            }),
-        })
+        out = Dict(
+            {
+                "image_files": [],
+                "extrinsics": [],
+                "intrinsics": [],
+                "aux": Dict(
+                    {
+                        "gt_mesh_path": gt_mesh_path,
+                        "gt_depth_files": [],
+                    }
+                ),
+            }
+        )
 
         for i in range(0, n_imgs, 1):
             img_path = os.path.join(data_folder, f"frame-{i:06d}.color.png")
@@ -228,12 +235,14 @@ class SevenScenes(Dataset):
                 img_path.replace("color", "depth").replace(".color.", ".depth.")
                 for img_path in image_files
             ]
-            return Dict({
-                "extrinsics": data["extrinsics"],
-                "intrinsics": data["intrinsics"],
-                "image_files": image_files,
-                "aux": Dict({"gt_depth_files": gt_depth_files}),
-            })
+            return Dict(
+                {
+                    "extrinsics": data["extrinsics"],
+                    "intrinsics": data["intrinsics"],
+                    "image_files": image_files,
+                    "aux": Dict({"gt_depth_files": gt_depth_files}),
+                }
+            )
         return None
 
     def fuse3d(self, scene: str, result_path: str, fuse_path: str, mode: str) -> None:
@@ -391,7 +400,11 @@ class SevenScenes(Dataset):
             depths_out.append(depth)
 
         # Use GT intrinsics and extrinsics
-        return np.stack(depths_out), gt_data.intrinsics.copy(), gt_data.extrinsics.copy()
+        return (
+            np.stack(depths_out),
+            gt_data.intrinsics.copy(),
+            gt_data.extrinsics.copy(),
+        )
 
     def _load_gt_mask(self, gt_depth_path: str) -> np.ndarray:
         """
@@ -445,5 +458,3 @@ class SevenScenes(Dataset):
             depth[invalid_mask] = 0.0
 
         return depth
-
-

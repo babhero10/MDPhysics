@@ -43,7 +43,9 @@ def export_to_feat_vis(
         if not k.startswith("feat_layer_"):
             continue
         os.makedirs(os.path.join(out_dir, k), exist_ok=True)
-        viz = PCARGBVisualizer(basis_mode="fixed", percentile_mode="global", clip_percent=10.0)
+        viz = PCARGBVisualizer(
+            basis_mode="fixed", percentile_mode="global", clip_percent=10.0
+        )
         viz.fit_reference(v)
         feats_vis = viz.transform_video(v)
         for idx in tqdm(range(len(feats_vis))):

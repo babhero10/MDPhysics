@@ -115,7 +115,11 @@ def umeyama_alignment(x: np.ndarray, y: np.ndarray):
     # SVD (text betw. eq. 38 and 39)
     u, d, v = np.linalg.svd(cov_xy)
     if np.count_nonzero(d > np.finfo(d.dtype).eps) < m - 1:
-        return None, None, None  # Degenerate covariance rank, Umeyama alignment is not possible
+        return (
+            None,
+            None,
+            None,
+        )  # Degenerate covariance rank, Umeyama alignment is not possible
 
     # S matrix, eq. 43
     s = np.eye(m)
@@ -212,7 +216,14 @@ def residual(Ginv, input_poses, dSloop, ii, jj, jacobian=False):
 
 
 def perform_updates(
-    input_poses, dSloop, ii_loop, jj_loop, iters=30, ep=0.0, lmbda=1e-6, fix_opt_window=False
+    input_poses,
+    dSloop,
+    ii_loop,
+    jj_loop,
+    iters=30,
+    ep=0.0,
+    lmbda=1e-6,
+    fix_opt_window=False,
 ):
     """Run the Levenberg Marquardt algorithm"""
 

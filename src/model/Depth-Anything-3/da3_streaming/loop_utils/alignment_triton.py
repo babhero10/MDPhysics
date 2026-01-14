@@ -231,7 +231,9 @@ def compute_weighted_mean_triton(points, weights):
     BLOCK_SIZE = 256
     grid = (triton.cdiv(n_points, BLOCK_SIZE),)
 
-    weighted_mean_kernel[grid](points, weights, mean_buffer, n_points, BLOCK_SIZE=BLOCK_SIZE)
+    weighted_mean_kernel[grid](
+        points, weights, mean_buffer, n_points, BLOCK_SIZE=BLOCK_SIZE
+    )
 
     total_weight = mean_buffer[3]
     if total_weight > 1e-12:
@@ -335,8 +337,12 @@ def weighted_estimate_sim3_triton(source_points, target_points, weights):
     src_centered = source_points - mu_src
     tgt_centered = target_points - mu_tgt
 
-    scale_src = torch.sqrt(torch.sum(normalized_weights * torch.sum(src_centered**2, dim=1)))
-    scale_tgt = torch.sqrt(torch.sum(normalized_weights * torch.sum(tgt_centered**2, dim=1)))
+    scale_src = torch.sqrt(
+        torch.sum(normalized_weights * torch.sum(src_centered**2, dim=1))
+    )
+    scale_tgt = torch.sqrt(
+        torch.sum(normalized_weights * torch.sum(tgt_centered**2, dim=1))
+    )
     s = scale_tgt / scale_src
 
     weighted_src = s * src_centered
@@ -356,9 +362,13 @@ def weighted_estimate_sim3_numba_triton(
 ):
 
     if align_method == "sim3":
-        s, mu_src, mu_tgt, H = weighted_estimate_sim3_triton(source_points, target_points, weights)
+        s, mu_src, mu_tgt, H = weighted_estimate_sim3_triton(
+            source_points, target_points, weights
+        )
     elif align_method == "se3" or align_method == "scale+se3":
-        s, mu_src, mu_tgt, H = weighted_estimate_se3_triton(source_points, target_points, weights)
+        s, mu_src, mu_tgt, H = weighted_estimate_se3_triton(
+            source_points, target_points, weights
+        )
 
     if s < 0:
         raise ValueError("Total weight too small for meaningful estimation")
@@ -435,7 +445,9 @@ def robust_weighted_estimate_sim3_triton(
 
         residuals_np = residuals.cpu().numpy()
         huber_loss_values = np.where(
-            residuals_np <= delta, 0.5 * residuals_np**2, delta * (residuals_np - 0.5 * delta)
+            residuals_np <= delta,
+            0.5 * residuals_np**2,
+            delta * (residuals_np - 0.5 * delta),
         )
         current_error = np.sum(huber_loss_values * init_weights)
 
@@ -492,7 +504,9 @@ def warmup_triton():
     try:
         mu_src, _ = compute_weighted_mean_triton(src_torch, weights_torch)
         mu_tgt, _ = compute_weighted_mean_triton(tgt_torch, weights_torch)
-        _ = compute_weighted_covariance_triton(src_torch, tgt_torch, weights_torch, mu_src, mu_tgt)
+        _ = compute_weighted_covariance_triton(
+            src_torch, tgt_torch, weights_torch, mu_src, mu_tgt
+        )
         print(" - compute_weighted_covariance_triton warmed up.")
     except Exception as e:
         print(f" ! Failed to warm up compute_weighted_covariance_triton: {e}")

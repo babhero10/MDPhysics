@@ -27,6 +27,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
+
 def create_depth_visualization(depth: np.ndarray) -> Optional[np.ndarray]:
     """
     Create a colored depth visualization.
@@ -62,7 +63,9 @@ def create_depth_visualization(depth: np.ndarray) -> Optional[np.ndarray]:
 
 
 def save_to_gallery_func(
-    target_dir: str, processed_data: Dict[int, Dict[str, Any]], gallery_name: Optional[str] = None
+    target_dir: str,
+    processed_data: Dict[int, Dict[str, Any]],
+    gallery_name: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Save the current reconstruction results to the gallery directory.

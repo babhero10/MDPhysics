@@ -95,7 +95,9 @@ class FileHandler:
         image_paths = sorted(image_paths)
 
         end_time = time.time()
-        print(f"Files copied to {target_dir_images}; took {end_time - start_time:.3f} seconds")
+        print(
+            f"Files copied to {target_dir_images}; took {end_time - start_time:.3f} seconds"
+        )
         return target_dir, image_paths
 
     def _process_images(self, input_images: List, target_dir_images: str) -> List[str]:
@@ -141,7 +143,9 @@ class FileHandler:
                 except Exception as e:
                     print(f"Error converting HEIC file {file_path}: {e}")
                     # Fall back to copying as is
-                    dst_path = os.path.join(target_dir_images, os.path.basename(file_path))
+                    dst_path = os.path.join(
+                        target_dir_images, os.path.basename(file_path)
+                    )
                     shutil.copy(file_path, dst_path)
                     image_paths.append(dst_path)
             else:
@@ -175,7 +179,9 @@ class FileHandler:
 
         vs = cv2.VideoCapture(video_path)
         fps = vs.get(cv2.CAP_PROP_FPS)
-        frame_interval = max(1, int(fps / s_time_interval))  # Convert FPS to frame interval
+        frame_interval = max(
+            1, int(fps / s_time_interval)
+        )  # Convert FPS to frame interval
 
         count = 0
         video_frame_num = 0
@@ -185,7 +191,9 @@ class FileHandler:
                 break
             count += 1
             if count % frame_interval == 0:
-                image_path = os.path.join(target_dir_images, f"{video_frame_num:06}.png")
+                image_path = os.path.join(
+                    target_dir_images, f"{video_frame_num:06}.png"
+                )
                 cv2.imwrite(image_path, frame)
                 image_paths.append(image_path)
                 video_frame_num += 1
@@ -212,7 +220,9 @@ class FileHandler:
         if not input_video and not input_images:
             return None, None, None, None
 
-        target_dir, image_paths = self.handle_uploads(input_video, input_images, s_time_interval)
+        target_dir, image_paths = self.handle_uploads(
+            input_video, input_images, s_time_interval
+        )
         return (
             None,
             target_dir,
@@ -267,7 +277,10 @@ class FileHandler:
             os.makedirs(target_dir_images)
 
         # Copy images if directory is new or empty
-        if not os.path.exists(target_dir_images) or len(os.listdir(target_dir_images)) == 0:
+        if (
+            not os.path.exists(target_dir_images)
+            or len(os.listdir(target_dir_images)) == 0
+        ):
             os.makedirs(target_dir_images, exist_ok=True)
             image_paths = []
             for file_path in selected_scene["image_files"]:
@@ -280,7 +293,9 @@ class FileHandler:
                 [
                     os.path.join(target_dir_images, f)
                     for f in os.listdir(target_dir_images)
-                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"))
+                    if f.lower().endswith(
+                        (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif")
+                    )
                 ]
             )
 

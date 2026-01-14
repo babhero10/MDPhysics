@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import sys
 from pathlib import Path
+from typing import Dict
 
 # Add local DepthAnything3 to path
 current_dir = Path(__file__).resolve().parent
@@ -11,7 +12,6 @@ if str(da3_path) not in sys.path:
     sys.path.append(str(da3_path))
 
 from depth_anything_3.api import DepthAnything3
-from typing import Dict, Optional
 
 
 class ExternalDepthModel(nn.Module):
@@ -45,6 +45,7 @@ class ExternalDepthModel(nn.Module):
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
         Forward pass for Depth Anything V3.
+        Auto-pads input to multiple of 14 and crops output.
 
         Args:
             x: Input image (B, 3, H, W).
@@ -55,16 +56,32 @@ class ExternalDepthModel(nn.Module):
         """
         B, C, H, W = x.shape
 
+        # 1. Pad to multiple of 14 (DA3 patch size)
+        patch_size = 14
+        pad_h = (patch_size - H % patch_size) % patch_size
+        pad_w = (patch_size - W % patch_size) % patch_size
+
+        x_padded = x
+        if pad_h > 0 or pad_w > 0:
+            # Pad right and bottom
+            x_padded = F.pad(x, (0, pad_w, 0, pad_h), mode="constant", value=0)
+
         # DA3 expects (B, N, 3, H, W) where N is number of views.
         # We treat each image in the batch as a single view (N=1).
-        # We can reshape x to (B, 1, 3, H, W) to process images independently but view-aware.
-        x_view = x.unsqueeze(1)
+        x_view = x_padded.unsqueeze(1)
 
         # Call the model directly to maintain gradients for fine-tuning
         # (Using .inference() would likely break the computational graph)
         prediction = self.model(x_view)
 
         results = {}
+
+        # Helper to crop back
+        def unpad(tensor):
+            # tensor is [B, ..., H_pad, W_pad]
+            if pad_h > 0 or pad_w > 0:
+                return tensor[..., :H, :W]
+            return tensor
 
         # Access outputs from prediction object
         # prediction.depth: [B, N, H, W] -> [B, 1, H, W]
@@ -78,13 +95,14 @@ class ExternalDepthModel(nn.Module):
             if depth.dim() == 4 and depth.shape[1] > 1:
                 pass  # Keep views if present, but usually N=1 for us
 
-            results["depth"] = depth
+            # Crop depth back to original size
+            results["depth"] = unpad(depth)
 
         # Confidence maps
         if hasattr(prediction, "conf"):
-            results["conf"] = prediction.conf
+            results["conf"] = unpad(prediction.conf)
 
-        # Extrinsics [B, N, 3, 4]
+        # Extrinsics [B, N, 3, 4] - No spatial dimensions, no unpad needed
         if hasattr(prediction, "extrinsics"):
             results["extrinsics"] = prediction.extrinsics
 

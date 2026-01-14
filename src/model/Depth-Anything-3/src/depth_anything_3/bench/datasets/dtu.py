@@ -86,8 +86,12 @@ class DTU(Dataset):
         """
         with open(filename) as f:
             lines = [line.rstrip() for line in f.readlines()]
-        extrinsics = np.fromstring(" ".join(lines[1:5]), dtype=np.float32, sep=" ").reshape((4, 4))
-        intrinsics = np.fromstring(" ".join(lines[7:10]), dtype=np.float32, sep=" ").reshape((3, 3))
+        extrinsics = np.fromstring(
+            " ".join(lines[1:5]), dtype=np.float32, sep=" "
+        ).reshape((4, 4))
+        intrinsics = np.fromstring(
+            " ".join(lines[7:10]), dtype=np.float32, sep=" "
+        ).reshape((3, 3))
         return intrinsics, extrinsics
 
     def get_data(self, scene: str) -> Dict:
@@ -142,7 +146,9 @@ class DTU(Dataset):
         scene_id = int(scene[4:])
         return os.path.join(self.data_root, f"Points/stl/stl{scene_id:03}_total.ply")
 
-    def eval3d(self, scene: str, fuse_path: str, use_gpu: bool = False) -> TDict[str, float]:
+    def eval3d(
+        self, scene: str, fuse_path: str, use_gpu: bool = False
+    ) -> TDict[str, float]:
         """
         Evaluate fused point cloud against DTU GT with ObsMask/Plane.
 
@@ -199,7 +205,9 @@ class DTU(Dataset):
         masks = self.load_masks(gt_data.aux.mask_files)
 
         if mode == "recon_unposed":
-            depths, intrinsics, extrinsics = self._prep_unposed(pred_data, gt_data, masks)
+            depths, intrinsics, extrinsics = self._prep_unposed(
+                pred_data, gt_data, masks
+            )
         elif mode == "recon_posed":
             depths, intrinsics, extrinsics = self._prep_posed(pred_data, gt_data, masks)
         else:
@@ -225,7 +233,9 @@ class DTU(Dataset):
                 no_filter_pc = cur_p_pcd.squeeze(0).permute(1, 0).cpu().numpy()
                 points.append(no_filter_pc)
             else:  # recon_posed
-                final_pc = self._fuse_consistent_points(depths_t, proj_t, idx, height, width)
+                final_pc = self._fuse_consistent_points(
+                    depths_t, proj_t, idx, height, width
+                )
                 points.append(final_pc)
 
         # Concatenate and optionally downsample to hard cap
@@ -315,7 +325,9 @@ class DTU(Dataset):
             xyz = torch.unsqueeze(xyz, 0).repeat(batch, 1, 1)
             rot_xyz = torch.matmul(rot, xyz)
 
-            rot_depth_xyz = rot_xyz.unsqueeze(2) * depth_values.view(-1, 1, 1, height * width)
+            rot_depth_xyz = rot_xyz.unsqueeze(2) * depth_values.view(
+                -1, 1, 1, height * width
+            )
             proj_xyz = rot_depth_xyz + trans.view(batch, 3, 1, 1)
             proj_xy = proj_xyz[:, :2, :, :] / proj_xyz[:, 2:3, :, :]
             proj_x_normalized = proj_xy[:, 0, :, :] / ((width - 1) / 2) - 1
@@ -419,7 +431,9 @@ class DTU(Dataset):
             n_neighbors=1, radius=thresh, algorithm="kd_tree", n_jobs=-1
         )
         nn_engine.fit(data_pcd)
-        rnn_idxs = nn_engine.radius_neighbors(data_pcd, radius=thresh, return_distance=False)
+        rnn_idxs = nn_engine.radius_neighbors(
+            data_pcd, radius=thresh, return_distance=False
+        )
         mask = np.ones(data_pcd.shape[0], dtype=np.bool_)
         for curr, idxs in enumerate(rnn_idxs):
             if mask[curr]:
@@ -432,19 +446,19 @@ class DTU(Dataset):
         ObsMask, BB, Res = (obs_mask_file[attr] for attr in ["ObsMask", "BB", "Res"])
         BB = BB.astype(np.float32)
 
-        inbound = ((data_down >= BB[:1] - patch) & (data_down < BB[1:] + patch * 2)).sum(
-            axis=-1
-        ) == 3
+        inbound = (
+            (data_down >= BB[:1] - patch) & (data_down < BB[1:] + patch * 2)
+        ).sum(axis=-1) == 3
         data_in = data_down[inbound]
 
         data_grid = np.around((data_in - BB[:1]) / Res).astype(np.int32)
-        grid_inbound = ((data_grid >= 0) & (data_grid < np.expand_dims(ObsMask.shape, 0))).sum(
-            axis=-1
-        ) == 3
+        grid_inbound = (
+            (data_grid >= 0) & (data_grid < np.expand_dims(ObsMask.shape, 0))
+        ).sum(axis=-1) == 3
         data_grid_in = data_grid[grid_inbound]
-        in_obs = ObsMask[data_grid_in[:, 0], data_grid_in[:, 1], data_grid_in[:, 2]].astype(
-            np.bool_
-        )
+        in_obs = ObsMask[
+            data_grid_in[:, 0], data_grid_in[:, 1], data_grid_in[:, 2]
+        ].astype(np.bool_)
         data_in_obs = data_in[grid_inbound][in_obs]
 
         # Compute accuracy (pred -> GT) and completeness (GT -> pred)
@@ -456,7 +470,9 @@ class DTU(Dataset):
         else:
             # CPU version (original, for exact reproduction)
             nn_engine.fit(stl)
-            dist_d2s, _ = nn_engine.kneighbors(data_in_obs, n_neighbors=1, return_distance=True)
+            dist_d2s, _ = nn_engine.kneighbors(
+                data_in_obs, n_neighbors=1, return_distance=True
+            )
             mean_d2s = dist_d2s[dist_d2s < max_dist].mean()
 
         ground_plane = loadmat(plane_file)["P"]
@@ -470,7 +486,9 @@ class DTU(Dataset):
         else:
             # CPU version (original, for exact reproduction)
             nn_engine.fit(data_in)
-            dist_s2d, _ = nn_engine.kneighbors(stl_above, n_neighbors=1, return_distance=True)
+            dist_s2d, _ = nn_engine.kneighbors(
+                stl_above, n_neighbors=1, return_distance=True
+            )
             mean_s2d = dist_s2d[dist_s2d < max_dist].mean()
 
         overall = (mean_d2s + mean_s2d) / 2
@@ -511,7 +529,9 @@ class DTU(Dataset):
             target_t = torch.from_numpy(target_batch).float().to(device)
             target_batches.append(target_t)
 
-        with tqdm(total=n_query_batches, desc="  GPU KNN", leave=False, ncols=100) as pbar:
+        with tqdm(
+            total=n_query_batches, desc="  GPU KNN", leave=False, ncols=100
+        ) as pbar:
             for i in range(0, len(query), batch_size):
                 batch = query[i : i + batch_size]
                 query_t = torch.from_numpy(batch).float().to(device)
@@ -553,15 +573,17 @@ class DTU(Dataset):
     def _depth_mask_path(self, scene: str, depth_idx: int) -> str:
         """Get path to depth mask for a scene and frame."""
         return os.path.join(
-            self.data_root, "depth_raw", "Depths", scene, f"depth_visual_{depth_idx:04d}.png"
+            self.data_root,
+            "depth_raw",
+            "Depths",
+            scene,
+            f"depth_visual_{depth_idx:04d}.png",
         )
 
-    def _prep_unposed(
-        self, pred_data: Dict, gt_data: Dict, masks: np.ndarray
-    ) -> tuple:
+    def _prep_unposed(self, pred_data: Dict, gt_data: Dict, masks: np.ndarray) -> tuple:
         """
         Prepare depths/intrinsics/extrinsics for recon_unposed mode.
-        
+
         Applies Umeyama scale, rescales intrinsics if depth resolution differs,
         and zeroes invalid-mask depths (nearest interpolation as in paper).
         """
@@ -590,9 +612,7 @@ class DTU(Dataset):
 
         return depths, intrinsics, extrinsics
 
-    def _prep_posed(
-        self, pred_data: Dict, gt_data: Dict, masks: np.ndarray
-    ) -> tuple:
+    def _prep_posed(self, pred_data: Dict, gt_data: Dict, masks: np.ndarray) -> tuple:
         """
         Prepare depths/intrinsics/extrinsics for recon_posed mode.
 
@@ -678,4 +698,3 @@ class DTU(Dataset):
         rng = np.random.default_rng(seed=42)
         random_idx = rng.choice(len(points), max_points, replace=False)
         return points[random_idx]
-

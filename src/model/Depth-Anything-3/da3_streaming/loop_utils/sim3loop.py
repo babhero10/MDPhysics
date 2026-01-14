@@ -57,14 +57,18 @@ class Sim3LoopOptimizer:
         if not cpp_version:
             self.solve_system_version = "python"
 
-    def numpy_to_pypose_sim3(self, s: float, R_mat: np.ndarray, t_vec: np.ndarray) -> pp.Sim3:
+    def numpy_to_pypose_sim3(
+        self, s: float, R_mat: np.ndarray, t_vec: np.ndarray
+    ) -> pp.Sim3:
         """Convert numpy s,R,t to pypose Sim3"""
         q = R.from_matrix(R_mat).as_quat()  # [x,y,z,w]
         # pypose requires [t, q, s] format
         data = np.concatenate([t_vec, q, np.array([s])])
         return pp.Sim3(torch.from_numpy(data).float().to(self.device))
 
-    def pypose_sim3_to_numpy(self, sim3: pp.Sim3) -> Tuple[float, np.ndarray, np.ndarray]:
+    def pypose_sim3_to_numpy(
+        self, sim3: pp.Sim3
+    ) -> Tuple[float, np.ndarray, np.ndarray]:
         """Convert pypose Sim3 to numpy s,R,t"""
         data = sim3.data.cpu().numpy()
         t = data[:3]
@@ -121,7 +125,8 @@ class Sim3LoopOptimizer:
         return pp.Sim3(out)
 
     def build_loop_constraints(
-        self, loop_constraints: List[Tuple[int, int, Tuple[float, np.ndarray, np.ndarray]]]
+        self,
+        loop_constraints: List[Tuple[int, int, Tuple[float, np.ndarray, np.ndarray]]],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Build loop closure constraints"""
         if not loop_constraints:
@@ -169,7 +174,9 @@ class Sim3LoopOptimizer:
             dSij = pp.Sim3(torch.empty(0, 8, device=self.device))
 
         constants = (
-            torch.cat((dSij.data, dSloop.data), dim=0) if dSloop.shape[0] > 0 else dSij.data
+            torch.cat((dSij.data, dSloop.data), dim=0)
+            if dSloop.shape[0] > 0
+            else dSij.data
         )
         if constants.shape[0] > 0:
             constants = pp.Sim3(constants)
@@ -190,12 +197,16 @@ class Sim3LoopOptimizer:
                 def _func_sum(*x):
                     return func(*x).sum(dim=0)
 
-                _, b, c = torch.autograd.functional.jacobian(_func_sum, x, vectorize=True)
+                _, b, c = torch.autograd.functional.jacobian(
+                    _func_sum, x, vectorize=True
+                )
                 from einops import rearrange
 
                 return rearrange(torch.stack((b, c)), "N O B I -> N B O I", N=2)
 
-            J_Ginv_i, J_Ginv_j = batch_jacobian(_residual, (constants, Ginv[iii], Ginv[jjj]))
+            J_Ginv_i, J_Ginv_j = batch_jacobian(
+                _residual, (constants, Ginv[iii], Ginv[jjj])
+            )
         else:
             J_Ginv_i = torch.empty(0, device=self.device)
             J_Ginv_j = torch.empty(0, device=self.device)
@@ -231,7 +242,9 @@ class Sim3LoopOptimizer:
         dSloop, ii_loop, jj_loop = self.build_loop_constraints(loop_constraints)
 
         if len(loop_constraints) == 0:
-            print("Warning: No loop constraints provided, returning original transforms")
+            print(
+                "Warning: No loop constraints provided, returning original transforms"
+            )
             return sequential_transforms
 
         Ginv = pp.Sim3(input_poses).Inv().Log()
@@ -276,7 +289,11 @@ class Sim3LoopOptimizer:
             Ginv_tmp = Ginv + delta_pose
 
             new_resid = self.residual(Ginv_tmp, input_poses, dSloop, ii_loop, jj_loop)
-            new_cost = new_resid.square().mean().item() if new_resid.numel() > 0 else float("inf")
+            new_cost = (
+                new_resid.square().mean().item()
+                if new_resid.numel() > 0
+                else float("inf")
+            )
 
             # L-M
             if new_cost < current_cost:
@@ -307,7 +324,9 @@ class Sim3LoopOptimizer:
 
         optimized_absolute_poses = pp.Exp(Ginv).Inv()
 
-        optimized_sequential = self.absolute_to_sequential_transforms(optimized_absolute_poses)
+        optimized_sequential = self.absolute_to_sequential_transforms(
+            optimized_absolute_poses
+        )
 
         print(
             f"Optimization completed. Final cost: \
@@ -381,8 +400,15 @@ def example_usage():
     plt.plot(x0, y0, "o--", label="Before Optimization")
     plt.plot(x1, y1, "o-", label="After Optimization")
     for i, j, _ in loop_constraints:
-        plt.plot([x0[i], x0[j]], [y0[i], y0[j]], "r--", label="Loop (Before)" if i == 5 else "")
-        plt.plot([x1[i], x1[j]], [y1[i], y1[j]], "g-", label="Loop (After)" if i == 5 else "")
+        plt.plot(
+            [x0[i], x0[j]],
+            [y0[i], y0[j]],
+            "r--",
+            label="Loop (Before)" if i == 5 else "",
+        )
+        plt.plot(
+            [x1[i], x1[j]], [y1[i], y1[j]], "g-", label="Loop (After)" if i == 5 else ""
+        )
     plt.gca().set_aspect("equal")
     plt.title("Sim3 Loop Closure Optimization (Rotating Ring)")
     plt.xlabel("x")

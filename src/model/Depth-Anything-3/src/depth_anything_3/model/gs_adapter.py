@@ -19,7 +19,11 @@ from torch import nn
 
 from depth_anything_3.model.utils.transform import cam_quat_xyzw_to_world_quat_wxyz
 from depth_anything_3.specs import Gaussians
-from depth_anything_3.utils.geometry import affine_inverse, get_world_rays, sample_image_grid
+from depth_anything_3.utils.geometry import (
+    affine_inverse,
+    get_world_rays,
+    sample_image_grid,
+)
 from depth_anything_3.utils.pose_align import batch_align_poses_umeyama
 from depth_anything_3.utils.sh_helpers import rotate_sh
 
@@ -98,7 +102,9 @@ class GaussianAdapter(nn.Module):
             cam2worlds[:, :, :3, 3] = cam2worlds[:, :, :3, 3] * rearrange(
                 pose_scales, "b -> b () ()"
             )  # [b, i, j]
-            gs_depths = gs_depths * rearrange(pose_scales, "b -> b () () ()")  # [b, v, h, w]
+            gs_depths = gs_depths * rearrange(
+                pose_scales, "b -> b () () ()"
+            )  # [b, v, h, w]
         # 1.3) casting xy in image space
         xy_ray, _ = sample_image_grid((H, W), device)
         xy_ray = xy_ray[None, None, ...].expand(b, v, -1, -1, -1)  # b v h w xy

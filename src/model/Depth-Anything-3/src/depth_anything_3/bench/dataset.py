@@ -32,7 +32,9 @@ from depth_anything_3.bench.utils import compute_pose
 from depth_anything_3.utils.geometry import as_homogeneous
 
 
-def _wait_for_file_ready(path: str, timeout: float = 3.0, interval: float = 0.2) -> None:
+def _wait_for_file_ready(
+    path: str, timeout: float = 3.0, interval: float = 0.2
+) -> None:
     """Wait until file size stabilizes for 2 consecutive checks."""
     last_size = -1
     stable_count = 0
@@ -133,4 +135,3 @@ class Dataset:
             mode: Fusion mode ("recon_unposed" or "recon_posed")
         """
         raise NotImplementedError
-

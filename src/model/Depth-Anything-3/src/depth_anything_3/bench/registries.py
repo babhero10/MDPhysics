@@ -49,7 +49,9 @@ def _import_all_datasets_once():
         pkg = importlib.import_module(pkg_name)
         pkg_paths = list(getattr(pkg, "__path__", []))
 
-        for finder, name, ispkg in pkgutil.walk_packages(pkg_paths, prefix=pkg_name + "."):
+        for finder, name, ispkg in pkgutil.walk_packages(
+            pkg_paths, prefix=pkg_name + "."
+        ):
             base = name.rsplit(".", 1)[-1]
             if base.startswith("_"):
                 continue
@@ -82,4 +84,3 @@ METRIC_REGISTRY = AutoRegistry()  # For metric depth evaluation
 MONO_REGISTRY = AutoRegistry()  # For monocular depth evaluation
 MV_REGISTRY = AutoRegistry()  # For multi-view evaluation
 NVS_REGISTRY = AutoRegistry()  # For novel view synthesis evaluation
-

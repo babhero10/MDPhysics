@@ -137,7 +137,9 @@ def apply_sim3_direct(point_maps, s, R, t):
     return transformed
 
 
-def compute_alignment_error(point_map1, conf1, point_map2, conf2, conf_threshold, s, R, t):
+def compute_alignment_error(
+    point_map1, conf1, point_map2, conf2, conf_threshold, s, R, t
+):
     """
     Compute the average point alignment error (using only original inputs)
 
@@ -235,7 +237,13 @@ def save_confident_pointcloud(
 
 
 def save_confident_pointcloud_batch(
-    points, colors, confs, output_path, conf_threshold, sample_ratio=1.0, batch_size=1000000
+    points,
+    colors,
+    confs,
+    output_path,
+    conf_threshold,
+    sample_ratio=1.0,
+    batch_size=1000000,
 ):
     """
     - points: np.ndarray,  (b, H, W, 3) / (N, 3)
@@ -264,7 +272,11 @@ def save_confident_pointcloud_batch(
     num_samples = int(total_valid * sample_ratio) if sample_ratio < 1.0 else total_valid
 
     if num_samples == 0:
-        save_ply(np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.uint8), output_path)
+        save_ply(
+            np.zeros((0, 3), dtype=np.float32),
+            np.zeros((0, 3), dtype=np.uint8),
+            output_path,
+        )
         return
 
     if sample_ratio == 1.0:
@@ -311,12 +323,20 @@ def save_confident_pointcloud_batch(
                     remaining_pts = valid_pts[fill_count:]
                     remaining_cls = valid_cls[fill_count:]
 
-                    count, reservoir_pts, reservoir_clr = optimized_vectorized_reservoir_sampling(
-                        remaining_pts, remaining_cls, count, reservoir_pts, reservoir_clr
+                    count, reservoir_pts, reservoir_clr = (
+                        optimized_vectorized_reservoir_sampling(
+                            remaining_pts,
+                            remaining_cls,
+                            count,
+                            reservoir_pts,
+                            reservoir_clr,
+                        )
                     )
             else:
-                count, reservoir_pts, reservoir_clr = optimized_vectorized_reservoir_sampling(
-                    valid_pts, valid_cls, count, reservoir_pts, reservoir_clr
+                count, reservoir_pts, reservoir_clr = (
+                    optimized_vectorized_reservoir_sampling(
+                        valid_pts, valid_cls, count, reservoir_pts, reservoir_clr
+                    )
                 )
 
         save_ply(reservoir_pts, reservoir_clr, output_path)
@@ -802,11 +822,17 @@ def _weighted_estimate_sim3_numba(source_points, target_points, weights):
     return s, mu_src, mu_tgt, H
 
 
-def weighted_estimate_sim3_numba(source_points, target_points, weights, align_method="sim3"):
+def weighted_estimate_sim3_numba(
+    source_points, target_points, weights, align_method="sim3"
+):
     if align_method == "sim3":
-        s, mu_src, mu_tgt, H = _weighted_estimate_sim3_numba(source_points, target_points, weights)
+        s, mu_src, mu_tgt, H = _weighted_estimate_sim3_numba(
+            source_points, target_points, weights
+        )
     elif align_method == "se3" or align_method == "scale+se3":
-        s, mu_src, mu_tgt, H = _weighted_estimate_se3_numba(source_points, target_points, weights)
+        s, mu_src, mu_tgt, H = _weighted_estimate_se3_numba(
+            source_points, target_points, weights
+        )
 
     if s < 0:
         raise ValueError("Total weight too small for meaningful estimation")
@@ -872,7 +898,9 @@ def robust_weighted_estimate_sim3_numba(
     tgt = tgt.astype(np.float32)
     init_weights = init_weights.astype(np.float32)
 
-    s, R, t = weighted_estimate_sim3_numba(src, tgt, init_weights, align_method=align_method)
+    s, R, t = weighted_estimate_sim3_numba(
+        src, tgt, init_weights, align_method=align_method
+    )
 
     prev_error = float("inf")
 
@@ -996,7 +1024,9 @@ def compute_scale_ransac(
     )
 
     if np.sum(valid_mask) < 100:
-        print(f"Warning: Only {np.sum(valid_mask)} valid points, using default scale 1.0")
+        print(
+            f"Warning: Only {np.sum(valid_mask)} valid points, using default scale 1.0"
+        )
         return 1.0, 0.0
 
     valid_depth1 = depth1_flat[valid_mask]
@@ -1034,7 +1064,13 @@ def compute_scale_ransac(
 
 
 def compute_scale_weighted(
-    depth1, depth2, conf1, conf2, conf_threshold_ratio=0.1, weight_power=2.0, robust_quantile=0.9
+    depth1,
+    depth2,
+    conf1,
+    conf2,
+    conf_threshold_ratio=0.1,
+    weight_power=2.0,
+    robust_quantile=0.9,
 ):
     """
     Args:
@@ -1064,7 +1100,9 @@ def compute_scale_weighted(
     )
 
     if np.sum(valid_mask) < 100:
-        print(f"Warning: Only {np.sum(valid_mask)} valid points, using default scale 1.0")
+        print(
+            f"Warning: Only {np.sum(valid_mask)} valid points, using default scale 1.0"
+        )
         return 1.0, 0.0
 
     valid_depth1 = depth1_flat[valid_mask]
@@ -1088,7 +1126,9 @@ def compute_scale_weighted(
 
     quantile_idx = np.searchsorted(cumulative_weights, robust_quantile)
     scale_quantile = (
-        sorted_ratios[quantile_idx] if quantile_idx < len(sorted_ratios) else scale_median
+        sorted_ratios[quantile_idx]
+        if quantile_idx < len(sorted_ratios)
+        else scale_median
     )
 
     weight_entropy = -np.sum(combined_weights * np.log(combined_weights + 1e-8))
@@ -1118,12 +1158,16 @@ def compute_chunk_scale_advanced(depth1, depth2, conf1, conf2, method="auto"):
 
     elif method == "auto":
         scale_ransac, inlier_ratio = compute_scale_ransac(depth1, depth2, conf1, conf2)
-        scale_weighted, conf_score = compute_scale_weighted(depth1, depth2, conf1, conf2)
+        scale_weighted, conf_score = compute_scale_weighted(
+            depth1, depth2, conf1, conf2
+        )
 
         ransac_quality = inlier_ratio
         weighted_quality = conf_score
 
-        print(f"RANSAC quality: {ransac_quality:.4f}, Weighted quality: {weighted_quality:.4f}")
+        print(
+            f"RANSAC quality: {ransac_quality:.4f}, Weighted quality: {weighted_quality:.4f}"
+        )
 
         if ransac_quality > 0.7 and weighted_quality > 0.7:
             # both method are good, we take both of them by average
@@ -1156,7 +1200,9 @@ def precompute_scale_chunks_with_depth(
         chunk1_depth, chunk2_depth, chunk1_conf, chunk2_conf, method
     )
 
-    print(f"Final scale: {scale_factor:.6f}, quality: {quality_score:.4f}, method: {method_used}")
+    print(
+        f"Final scale: {scale_factor:.6f}, quality: {quality_score:.4f}, method: {method_used}"
+    )
 
     return scale_factor, quality_score, method_used
 

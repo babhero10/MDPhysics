@@ -54,7 +54,9 @@ def export_to_colmap(
 
     point3d_ids = []
     for vidx in range(num_points):
-        point3d_id = reconstruction.add_point3D(points[vidx], pycolmap.Track(), colors[vidx])
+        point3d_id = reconstruction.add_point3D(
+            points[vidx], pycolmap.Track(), colors[vidx]
+        )
         point3d_ids.append(point3d_id)
 
     for fidx in range(num_frames):
@@ -65,7 +67,9 @@ def export_to_colmap(
             intrinsic[:1] *= orig_w / w
             intrinsic[1:2] *= orig_h / h
         elif process_res_method == "crop":
-            raise NotImplementedError("COLMAP export for crop method is not implemented")
+            raise NotImplementedError(
+                "COLMAP export for crop method is not implemented"
+            )
         else:
             raise ValueError(f"Unknown process_res_method: {process_res_method}")
 
@@ -74,7 +78,9 @@ def export_to_colmap(
         )
 
         extrinsic = prediction.extrinsics[fidx]
-        cam_from_world = pycolmap.Rigid3d(pycolmap.Rotation3d(extrinsic[:3, :3]), extrinsic[:3, 3])
+        cam_from_world = pycolmap.Rigid3d(
+            pycolmap.Rotation3d(extrinsic[:3, :3]), extrinsic[:3, 3]
+        )
 
         # set and add camera
         camera = pycolmap.Camera()

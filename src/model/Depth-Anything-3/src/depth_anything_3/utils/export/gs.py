@@ -38,7 +38,9 @@ def export_to_gs_ply(
     ] = 1,  # export GS every N views, useful for extremely dense inputs
 ):
     gs_world = prediction.gaussians
-    pred_depth = torch.from_numpy(prediction.depth).unsqueeze(-1).to(gs_world.means)  # v h w 1
+    pred_depth = (
+        torch.from_numpy(prediction.depth).unsqueeze(-1).to(gs_world.means)
+    )  # v h w 1
     idx = 0
     os.makedirs(os.path.join(export_dir, "gs_ply"), exist_ok=True)
     save_path = os.path.join(export_dir, f"gs_ply/{idx:04d}.ply")
@@ -62,7 +64,9 @@ def export_to_gs_video(
     prediction: Prediction,
     export_dir: str,
     extrinsics: Optional[torch.Tensor] = None,  # render views' world2cam, "b v 4 4"
-    intrinsics: Optional[torch.Tensor] = None,  # render views' unnormed intrinsics, "b v 3 3"
+    intrinsics: Optional[
+        torch.Tensor
+    ] = None,  # render views' unnormed intrinsics, "b v 3 3"
     out_image_hw: Optional[tuple[int, int]] = None,  # render views' resolution, (h, w)
     chunk_size: Optional[int] = 4,
     trj_mode: Literal[
@@ -86,7 +90,9 @@ def export_to_gs_video(
     if extrinsics is not None:
         tgt_extrs = extrinsics
     else:
-        tgt_extrs = torch.from_numpy(prediction.extrinsics).unsqueeze(0).to(gs_world.means)
+        tgt_extrs = (
+            torch.from_numpy(prediction.extrinsics).unsqueeze(0).to(gs_world.means)
+        )
         if prediction.is_metric:
             scale_factor = prediction.scale_factor
             if scale_factor is not None:

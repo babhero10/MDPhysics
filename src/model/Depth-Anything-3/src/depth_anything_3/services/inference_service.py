@@ -142,14 +142,20 @@ class InferenceService:
 
         # Add pose data (if exists)
         if extrinsics is not None:
-            payload["extrinsics"] = [ext.astype(np.float64).tolist() for ext in extrinsics]
+            payload["extrinsics"] = [
+                ext.astype(np.float64).tolist() for ext in extrinsics
+            ]
         if intrinsics is not None:
-            payload["intrinsics"] = [intr.astype(np.float64).tolist() for intr in intrinsics]
+            payload["intrinsics"] = [
+                intr.astype(np.float64).tolist() for intr in intrinsics
+            ]
 
         # Submit task
         typer.echo("Submitting inference task to backend...")
         try:
-            response = requests.post(f"{backend_url}/inference", json=payload, timeout=30)
+            response = requests.post(
+                f"{backend_url}/inference", json=payload, timeout=30
+            )
             response.raise_for_status()
             result = response.json()
 
@@ -158,7 +164,9 @@ class InferenceService:
                 typer.echo("Task submitted successfully!")
                 typer.echo(f"Task ID: {task_id}")
                 typer.echo(f"Results will be saved to: {export_dir}")
-                typer.echo(f"Check backend logs for progress updates with task ID: {task_id}")
+                typer.echo(
+                    f"Check backend logs for progress updates with task ID: {task_id}"
+                )
                 return result
             else:
                 raise typer.BadParameter(

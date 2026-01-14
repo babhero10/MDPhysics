@@ -103,7 +103,9 @@ class GSDPT(DPT):
         h_out = int(ph * self.patch_size / self.down_ratio)
         w_out = int(pw * self.patch_size / self.down_ratio)
 
-        fused = custom_interpolate(fused, (h_out, w_out), mode="bilinear", align_corners=True)
+        fused = custom_interpolate(
+            fused, (h_out, w_out), mode="bilinear", align_corners=True
+        )
 
         # inject the image information here
         fused = fused + self.images_merger(images)

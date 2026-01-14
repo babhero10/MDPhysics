@@ -114,7 +114,9 @@ class MetricsPrinter:
         """
         self.use_color = use_color
 
-    def print_results(self, metrics: TDict[str, dict], summary_only: bool = True) -> None:
+    def print_results(
+        self, metrics: TDict[str, dict], summary_only: bool = True
+    ) -> None:
         """
         Print evaluation metrics in a beautiful tabular format.
 
@@ -168,7 +170,9 @@ class MetricsPrinter:
             else:
                 dataset, mode = key, "unknown"
 
-            print(f"\n{Colors.BOLD_CYAN}📊 {dataset.upper()} - {mode.upper()}{Colors.RESET}")
+            print(
+                f"\n{Colors.BOLD_CYAN}📊 {dataset.upper()} - {mode.upper()}{Colors.RESET}"
+            )
             print("-" * 100)
 
             # Collect metrics from all runs
@@ -224,7 +228,9 @@ class MetricsPrinter:
                                 lb in metric_name.lower() for lb in self.LOWER_IS_BETTER
                             )
                             is_best = abs(val - best_val) < 1e-8 if best_val else False
-                            is_worst = abs(val - worst_val) < 1e-8 if worst_val else False
+                            is_worst = (
+                                abs(val - worst_val) < 1e-8 if worst_val else False
+                            )
                             val_str_padded = f"{val_str:<{label_width}}"
                             val_str = colorize_value(
                                 val_str_padded, is_best, is_worst, lower_better
@@ -268,7 +274,9 @@ class MetricsPrinter:
                 grouped[dataset][mode] = data
         return grouped
 
-    def _print_dataset_section(self, dataset: str, modes_data: TDict[str, dict]) -> None:
+    def _print_dataset_section(
+        self, dataset: str, modes_data: TDict[str, dict]
+    ) -> None:
         """Print metrics section for a single dataset."""
         print(f"\n{Colors.BOLD_MAGENTA}🔍 {dataset.upper()}{Colors.RESET}")
         print("-" * 100)
@@ -399,11 +407,11 @@ class MetricsPrinter:
 
         # ============ POSE METRICS ============
         print(f"\n{Colors.BOLD_MAGENTA}🎯 POSE ESTIMATION{Colors.RESET}")
-        
+
         # Pose: show all datasets except DTU (keep DTU-64 only)
         # Order: HiRoom, ETH3D, DTU-64, 7Scenes, ScanNet++
         pose_datasets = ["hiroom", "eth3d", "dtu64", "7scenes", "scannetpp"]
-        
+
         # Header: Avg first, then datasets
         header = f"{'Metric':<15}{'Avg':<{col_width}}"
         for ds in pose_datasets:
@@ -433,7 +441,9 @@ class MetricsPrinter:
             if val is not None:
                 values.append(val)
         avg = sum(values) / len(values) if values else None
-        row = f"{'Auc3':<15}{Colors.BOLD_GREEN}{fmt_val(avg):<{col_width}}{Colors.RESET}"
+        row = (
+            f"{'Auc3':<15}{Colors.BOLD_GREEN}{fmt_val(avg):<{col_width}}{Colors.RESET}"
+        )
         for ds in pose_datasets:
             val = get_pose_metric(ds, "Auc3")
             row += f"{fmt_val(val):<{col_width}}"
@@ -446,7 +456,9 @@ class MetricsPrinter:
             if val is not None:
                 values.append(val)
         avg = sum(values) / len(values) if values else None
-        row = f"{'Auc30':<15}{Colors.BOLD_GREEN}{fmt_val(avg):<{col_width}}{Colors.RESET}"
+        row = (
+            f"{'Auc30':<15}{Colors.BOLD_GREEN}{fmt_val(avg):<{col_width}}{Colors.RESET}"
+        )
         for ds in pose_datasets:
             val = get_pose_metric(ds, "Auc30")
             row += f"{fmt_val(val):<{col_width}}"
@@ -454,11 +466,16 @@ class MetricsPrinter:
 
         # ============ RECON_UNPOSED METRICS ============
         print(f"\n{Colors.BOLD_MAGENTA}🏗️  RECON_UNPOSED (Pred Pose){Colors.RESET}")
-        
+
         # For recon, exclude dtu64 from columns
         recon_datasets = ["hiroom", "eth3d", "dtu", "7scenes", "scannetpp"]
-        avg_datasets = ["hiroom", "eth3d", "7scenes", "scannetpp"]  # Exclude DTU from avg
-        
+        avg_datasets = [
+            "hiroom",
+            "eth3d",
+            "7scenes",
+            "scannetpp",
+        ]  # Exclude DTU from avg
+
         # Header: Avg first, then datasets
         header = f"{'Metric':<15}{'Avg*':<{col_width}}"
         for ds in recon_datasets:
@@ -495,7 +512,7 @@ class MetricsPrinter:
 
         # ============ RECON_POSED METRICS ============
         print(f"\n{Colors.BOLD_MAGENTA}🏗️  RECON_POSED (GT Pose){Colors.RESET}")
-        
+
         # Header: Avg first, then datasets
         header = f"{'Metric':<15}{'Avg*':<{col_width}}"
         for ds in recon_datasets:
@@ -530,7 +547,9 @@ class MetricsPrinter:
             row += f"{fmt_val(val):<{col_width}}"
         print(row)
 
-        print(f"\n{Colors.CYAN}* Avg F-score / Overall = average over HiRoom, ETH3D, 7Scenes, ScanNet++ (4 datasets){Colors.RESET}")
+        print(
+            f"\n{Colors.CYAN}* Avg F-score / Overall = average over HiRoom, ETH3D, 7Scenes, ScanNet++ (4 datasets){Colors.RESET}"
+        )
 
 
 def load_metrics_from_dir(metric_dir: str) -> TDict[str, dict]:
@@ -615,4 +634,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

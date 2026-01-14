@@ -88,7 +88,8 @@ def parallel_execution(
 
     def get_action_args(length: int, args: List, kwargs: Dict, i: int):
         action_args = [
-            (arg[i] if isinstance(arg, list) and len(arg) == length else arg) for arg in args
+            (arg[i] if isinstance(arg, list) and len(arg) == length else arg)
+            for arg in args
         ]
         # TODO: Support all types of iterable
         action_kwargs = {

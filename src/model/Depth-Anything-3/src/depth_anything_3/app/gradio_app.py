@@ -37,7 +37,9 @@ class DepthAnything3App:
     Main application class for Depth Anything 3 Gradio app.
     """
 
-    def __init__(self, model_dir: str = None, workspace_dir: str = None, gallery_dir: str = None):
+    def __init__(
+        self, model_dir: str = None, workspace_dir: str = None, gallery_dir: str = None
+    ):
         """
         Initialize the application.
 
@@ -105,10 +107,14 @@ class DepthAnything3App:
             scene_name = scene["name"]
 
             # Check if scene name matches the gs tag for high-res+3DGS caching
-            use_high_res_gs = cache_gs_tag and cache_gs_tag.lower() in scene_name.lower()
+            use_high_res_gs = (
+                cache_gs_tag and cache_gs_tag.lower() in scene_name.lower()
+            )
 
             if use_high_res_gs:
-                print(f"[{i}/{len(scenes)}] Caching scene: {scene_name} (HIGH-RES + 3DGS)")
+                print(
+                    f"[{i}/{len(scenes)}] Caching scene: {scene_name} (HIGH-RES + 3DGS)"
+                )
                 print(f"  - Number of images: {scene['num_images']}")
                 print(f"  - Matched tag: '{cache_gs_tag}' - using high_res + 3DGS")
             else:
@@ -117,8 +123,8 @@ class DepthAnything3App:
 
             try:
                 # Load example scene
-                _, target_dir, _, _, _, _, _, _, _ = self.event_handlers.load_example_scene(
-                    scene_name
+                _, target_dir, _, _, _, _, _, _, _ = (
+                    self.event_handlers.load_example_scene(scene_name)
                 )
 
                 if target_dir and target_dir != "None":
@@ -179,7 +185,9 @@ class DepthAnything3App:
             self.ui_components.create_header_section()
             self.ui_components.create_description_section()
 
-            target_dir_output = gr.Textbox(label="Target Dir", visible=False, value="None")
+            target_dir_output = gr.Textbox(
+                label="Target Dir", visible=False, value="None"
+            )
 
             # Main content area
             with gr.Row():
@@ -220,12 +228,16 @@ class DepthAnything3App:
                                 ) = self.ui_components.create_measure_section()
 
                             with gr.Tab("3DGS Rendered Novel Views"):
-                                gs_video, gs_info = self.ui_components.create_nvs_video()
+                                gs_video, gs_info = (
+                                    self.ui_components.create_nvs_video()
+                                )
 
                         # Inference control section (before inference)
-                        (process_res_method_dropdown, infer_gs, ref_view_strategy_dropdown) = (
-                            self.ui_components.create_inference_control_section()
-                        )
+                        (
+                            process_res_method_dropdown,
+                            infer_gs,
+                            ref_view_strategy_dropdown,
+                        ) = self.ui_components.create_inference_control_section()
 
                         # Display control section - includes 3DGS options, buttons, and Visualization Options  # noqa: E501
                         (
@@ -360,7 +372,9 @@ class DepthAnything3App:
 
         # Main reconstruction button
         submit_btn.click(
-            fn=self.event_handlers.clear_fields, inputs=[], outputs=[reconstruction_output]
+            fn=self.event_handlers.clear_fields,
+            inputs=[],
+            outputs=[reconstruction_output],
         ).then(fn=self.event_handlers.update_log, inputs=[], outputs=[log_output]).then(
             fn=self.event_handlers.gradio_demo,
             inputs=[
@@ -411,12 +425,22 @@ class DepthAnything3App:
         input_video.change(
             fn=self.event_handlers.handle_uploads,
             inputs=[input_video, input_images, s_time_interval],
-            outputs=[reconstruction_output, target_dir_output, image_gallery, log_output],
+            outputs=[
+                reconstruction_output,
+                target_dir_output,
+                image_gallery,
+                log_output,
+            ],
         )
         input_images.change(
             fn=self.event_handlers.handle_uploads,
             inputs=[input_video, input_images, s_time_interval],
-            outputs=[reconstruction_output, target_dir_output, image_gallery, log_output],
+            outputs=[
+                reconstruction_output,
+                target_dir_output,
+                image_gallery,
+                log_output,
+            ],
         )
 
         # Navigation handlers
@@ -434,7 +458,12 @@ class DepthAnything3App:
         measure_image.select(
             fn=self.event_handlers.measure,
             inputs=[processed_data_state, measure_points_state, measure_view_selector],
-            outputs=[measure_image, measure_depth_image, measure_points_state, measure_text],
+            outputs=[
+                measure_image,
+                measure_depth_image,
+                measure_points_state,
+                measure_text,
+            ],
         )
 
         # Example scene handlers
@@ -561,7 +590,9 @@ class DepthAnything3App:
             measure_depth = None
             if result[4] is not None:  # processed_data exists
                 measure_img, measure_depth, _ = (
-                    self.event_handlers.visualization_handler.update_measure_view(result[4], 0)
+                    self.event_handlers.visualization_handler.update_measure_view(
+                        result[4], 0
+                    )
                 )
 
             return result + ("True", measure_img, measure_depth)
@@ -597,7 +628,11 @@ class DepthAnything3App:
         """
         demo = self.create_app()
         demo.queue(max_size=20).launch(
-            show_error=True, ssr_mode=False, server_name=host, server_port=port, **kwargs
+            show_error=True,
+            ssr_mode=False,
+            server_name=host,
+            server_port=port,
+            **kwargs,
         )
 
 
@@ -625,7 +660,9 @@ Examples:
 
     # Server configuration
     parser.add_argument(
-        "--host", default="127.0.0.1", help="Host address to bind to (default: 127.0.0.1)"
+        "--host",
+        default="127.0.0.1",
+        help="Host address to bind to (default: 127.0.0.1)",
     )
     parser.add_argument(
         "--port", type=int, default=7860, help="Port number to bind to (default: 7860)"
@@ -649,7 +686,9 @@ Examples:
     )
 
     # Additional Gradio options
-    parser.add_argument("--share", action="store_true", help="Create a public link for the app")
+    parser.add_argument(
+        "--share", action="store_true", help="Create a public link for the app"
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
     # Example caching options
@@ -673,7 +712,9 @@ Examples:
 
     # Initialize and launch the application
     app = DepthAnything3App(
-        model_dir=args.model_dir, workspace_dir=args.workspace_dir, gallery_dir=args.gallery_dir
+        model_dir=args.model_dir,
+        workspace_dir=args.workspace_dir,
+        gallery_dir=args.gallery_dir,
     )
 
     # Prepare launch arguments

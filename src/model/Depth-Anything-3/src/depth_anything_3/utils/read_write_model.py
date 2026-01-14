@@ -37,7 +37,9 @@ import os
 import struct
 import numpy as np
 
-CameraModel = collections.namedtuple("CameraModel", ["model_id", "model_name", "num_params"])
+CameraModel = collections.namedtuple(
+    "CameraModel", ["model_id", "model_name", "num_params"]
+)
 Camera = collections.namedtuple("Camera", ["id", "model", "width", "height", "params"])
 BaseImage = collections.namedtuple(
     "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"]
@@ -65,8 +67,12 @@ CAMERA_MODELS = {
     CameraModel(model_id=9, model_name="RADIAL_FISHEYE", num_params=5),
     CameraModel(model_id=10, model_name="THIN_PRISM_FISHEYE", num_params=12),
 }
-CAMERA_MODEL_IDS = {camera_model.model_id: camera_model for camera_model in CAMERA_MODELS}
-CAMERA_MODEL_NAMES = {camera_model.model_name: camera_model for camera_model in CAMERA_MODELS}
+CAMERA_MODEL_IDS = {
+    camera_model.model_id: camera_model for camera_model in CAMERA_MODELS
+}
+CAMERA_MODEL_NAMES = {
+    camera_model.model_name: camera_model for camera_model in CAMERA_MODELS
+}
 
 
 def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
@@ -137,7 +143,9 @@ def read_cameras_binary(path_to_model_file):
     with open(path_to_model_file, "rb") as fid:
         num_cameras = read_next_bytes(fid, 8, "Q")[0]
         for _ in range(num_cameras):
-            camera_properties = read_next_bytes(fid, num_bytes=24, format_char_sequence="iiQQ")
+            camera_properties = read_next_bytes(
+                fid, num_bytes=24, format_char_sequence="iiQQ"
+            )
             camera_id = camera_properties[0]
             model_id = camera_properties[1]
             model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
@@ -259,7 +267,9 @@ def read_images_binary(path_to_model_file):
                 binary_image_name += current_char
                 current_char = read_next_bytes(fid, 1, "c")[0]
             image_name = binary_image_name.decode("utf-8")
-            num_points2D = read_next_bytes(fid, num_bytes=8, format_char_sequence="Q")[0]
+            num_points2D = read_next_bytes(fid, num_bytes=8, format_char_sequence="Q")[
+                0
+            ]
             x_y_id_s = read_next_bytes(
                 fid,
                 num_bytes=24 * num_points2D,
@@ -293,7 +303,9 @@ def write_images_text(images, path):
     if len(images) == 0:
         mean_observations = 0
     else:
-        mean_observations = sum((len(img.point3D_ids) for _, img in images.items())) / len(images)
+        mean_observations = sum(
+            (len(img.point3D_ids) for _, img in images.items())
+        ) / len(images)
     HEADER = (
         "# Image list with two lines of data per image:\n"
         + "#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n"
@@ -392,7 +404,9 @@ def read_points3D_binary(path_to_model_file):
             xyz = np.array(binary_point_line_properties[1:4])
             rgb = np.array(binary_point_line_properties[4:7])
             error = np.array(binary_point_line_properties[7])
-            track_length = read_next_bytes(fid, num_bytes=8, format_char_sequence="Q")[0]
+            track_length = read_next_bytes(fid, num_bytes=8, format_char_sequence="Q")[
+                0
+            ]
             track_elems = read_next_bytes(
                 fid,
                 num_bytes=8 * track_length,
@@ -420,7 +434,9 @@ def write_points3D_text(points3D, path):
     if len(points3D) == 0:
         mean_track_length = 0
     else:
-        mean_track_length = sum((len(pt.image_ids) for _, pt in points3D.items())) / len(points3D)
+        mean_track_length = sum(
+            (len(pt.image_ids) for _, pt in points3D.items())
+        ) / len(points3D)
     HEADER = (
         "# 3D point list with one line of data per point:\n"
         + "#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n"
@@ -548,7 +564,9 @@ def rotmat2qvec(R):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Read and write COLMAP binary and text models")
+    parser = argparse.ArgumentParser(
+        description="Read and write COLMAP binary and text models"
+    )
     parser.add_argument("--input_model", help="path to input model folder")
     parser.add_argument(
         "--input_format",

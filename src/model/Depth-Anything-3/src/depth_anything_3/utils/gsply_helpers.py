@@ -127,7 +127,9 @@ def save_gaussian_ply(
     world_shs = gaussians.harmonics
     world_rotations = gaussians.rotations
     gs_scales = gaussians.scales
-    gs_opacities = inverse_sigmoid(gaussians.opacities) if inv_opacity else gaussians.opacities
+    gs_opacities = (
+        inverse_sigmoid(gaussians.opacities) if inv_opacity else gaussians.opacities
+    )
 
     # Create a mask to filter the Gaussians.
 
@@ -157,7 +159,9 @@ def save_gaussian_ply(
         selected_element = rearrange(
             element[0], "(v h w) ... -> v h w ...", v=src_v, h=out_h, w=out_w
         )
-        selected_element = selected_element[::gs_views_interval][mask[::gs_views_interval]]
+        selected_element = selected_element[::gs_views_interval][
+            mask[::gs_views_interval]
+        ]
         return selected_element
 
     export_ply(

@@ -21,7 +21,10 @@ from depth_anything_3.utils.geometry import affine_inverse, affine_inverse_np
 
 
 def batch_apply_alignment_to_enc(
-    rots: torch.Tensor, trans: torch.Tensor, scales: torch.Tensor, enc_list: List[torch.Tensor]
+    rots: torch.Tensor,
+    trans: torch.Tensor,
+    scales: torch.Tensor,
+    enc_list: List[torch.Tensor],
 ):
     pass
 
@@ -38,7 +41,8 @@ def batch_apply_alignment_to_ext(
     pose_est = affine_inverse(ext)
     pose_new_align_rot = rots[:, None] @ pose_est[..., :3, :3]
     pose_new_align_trans = (
-        scales[:, None, None] * (rots[:, None] @ pose_est[..., :3, 3:])[..., 0] + trans[:, None]
+        scales[:, None, None] * (rots[:, None] @ pose_est[..., :3, 3:])[..., 0]
+        + trans[:, None]
     )
     pose_new_align = torch.zeros_like(ext)
     pose_new_align[..., :3, :3] = pose_new_align_rot
@@ -55,7 +59,9 @@ def batch_align_poses_umeyama(ext_ref: torch.Tensor, ext_est: torch.Tensor):
     assert ext_est.requires_grad is False
     rots, trans, scales = [], [], []
     for b in range(ext_ref.shape[0]):
-        r, t, s = align_poses_umeyama(ext_ref[b].cpu().numpy(), ext_est[b].cpu().numpy())
+        r, t, s = align_poses_umeyama(
+            ext_ref[b].cpu().numpy(), ext_est[b].cpu().numpy()
+        )
         rots.append(torch.from_numpy(r).to(device=device, dtype=dtype))
         trans.append(torch.from_numpy(t).to(device=device, dtype=dtype))
         scales.append(torch.tensor(s, device=device, dtype=dtype))
@@ -149,7 +155,9 @@ def _ransac_align_sim3(
 
     # Fit again with best inliers
     if best_inliers is not None and best_inliers.sum() >= 3:
-        r, t, s, _ = _umeyama_sim3_from_paths(pose_ref[best_inliers], pose_est[best_inliers])
+        r, t, s, _ = _umeyama_sim3_from_paths(
+            pose_ref[best_inliers], pose_est[best_inliers]
+        )
     else:
         r, t, s = best_model
     return r, t, s
@@ -335,9 +343,13 @@ if __name__ == "__main__":
     num_points = 100
     points_ref = np.random.randn(num_points, 3)
     # 6. Use GT Sim(3) inverse transform to est frame
-    points_est = transform_points_sim3(points_ref, rot_gt, trans_gt, scale_gt, inverse=True)
+    points_est = transform_points_sim3(
+        points_ref, rot_gt, trans_gt, scale_gt, inverse=True
+    )
     # 7. Use estimated Sim(3) forward transform back to ref frame
-    points_ref_recovered = transform_points_sim3(points_est, r_est, t_est, s_est, inverse=False)
+    points_ref_recovered = transform_points_sim3(
+        points_est, r_est, t_est, s_est, inverse=False
+    )
     # 8. Check error
     err = np.abs(points_ref_recovered - points_ref)
     print("Point cloud sim3 transform error (mean abs):", err.mean())

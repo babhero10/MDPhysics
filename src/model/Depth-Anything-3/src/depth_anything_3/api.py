@@ -123,11 +123,19 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
             Dictionary containing model predictions
         """
         # Determine optimal autocast dtype
-        autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        autocast_dtype = (
+            torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        )
         with torch.no_grad():
             with torch.autocast(device_type=image.device.type, dtype=autocast_dtype):
                 return self.model(
-                    image, extrinsics, intrinsics, export_feat_layers, infer_gs, use_ray_pose, ref_view_strategy
+                    image,
+                    extrinsics,
+                    intrinsics,
+                    export_feat_layers,
+                    infer_gs,
+                    use_ray_pose,
+                    ref_view_strategy,
                 )
 
     def inference(
@@ -190,7 +198,9 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
             assert infer_gs, "must set `infer_gs=True` to perform gs-related export."
 
         if "colmap" in export_format:
-            assert isinstance(image[0], str), "`image` must be image paths for COLMAP export."
+            assert isinstance(
+                image[0], str
+            ), "`image` must be image paths for COLMAP export."
 
         # Preprocess images
         imgs_cpu, extrinsics, intrinsics = self._preprocess_inputs(
@@ -201,13 +211,23 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         imgs, ex_t, in_t = self._prepare_model_inputs(imgs_cpu, extrinsics, intrinsics)
 
         # Normalize extrinsics
-        ex_t_norm = self._normalize_extrinsics(ex_t.clone() if ex_t is not None else None)
+        ex_t_norm = self._normalize_extrinsics(
+            ex_t.clone() if ex_t is not None else None
+        )
 
         # Run model forward pass
-        export_feat_layers = list(export_feat_layers) if export_feat_layers is not None else []
+        export_feat_layers = (
+            list(export_feat_layers) if export_feat_layers is not None else []
+        )
 
         raw_output = self._run_model_forward(
-            imgs, ex_t_norm, in_t, export_feat_layers, infer_gs, use_ray_pose, ref_view_strategy
+            imgs,
+            ex_t_norm,
+            in_t,
+            export_feat_layers,
+            infer_gs,
+            use_ray_pose,
+            ref_view_strategy,
         )
 
         # Convert raw output to prediction
@@ -380,8 +400,12 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         if need_sync:
             torch.cuda.synchronize(device)
         start_time = time.time()
-        feat_layers = list(export_feat_layers) if export_feat_layers is not None else None
-        output = self.forward(imgs, ex_t, in_t, feat_layers, infer_gs, use_ray_pose, ref_view_strategy)
+        feat_layers = (
+            list(export_feat_layers) if export_feat_layers is not None else None
+        )
+        output = self.forward(
+            imgs, ex_t, in_t, feat_layers, infer_gs, use_ray_pose, ref_view_strategy
+        )
         if need_sync:
             torch.cuda.synchronize(device)
         end_time = time.time()
@@ -393,10 +417,14 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         start_time = time.time()
         output = self.output_processor(raw_output)
         end_time = time.time()
-        logger.info(f"Conversion to Prediction Done. Time: {end_time - start_time} seconds")
+        logger.info(
+            f"Conversion to Prediction Done. Time: {end_time - start_time} seconds"
+        )
         return output
 
-    def _add_processed_images(self, prediction: Prediction, imgs_cpu: torch.Tensor) -> Prediction:
+    def _add_processed_images(
+        self, prediction: Prediction, imgs_cpu: torch.Tensor
+    ) -> Prediction:
         """Add processed images to prediction for visualization."""
         # Convert from (N, 3, H, W) to (N, H, W, 3) and denormalize
         processed_imgs = imgs_cpu.permute(0, 2, 3, 1).cpu().numpy()  # (N, H, W, 3)

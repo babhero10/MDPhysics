@@ -103,7 +103,9 @@ class EventHandlers:
 
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             if scene_name and scene_name.strip():
-                gallery_name = f"{scene_name.strip()}_{timestamp}_pct{save_percentage:.0f}"
+                gallery_name = (
+                    f"{scene_name.strip()}_{timestamp}_pct{save_percentage:.0f}"
+                )
             else:
                 gallery_name = f"save_{timestamp}_pct{save_percentage:.0f}"
 
@@ -111,7 +113,9 @@ class EventHandlers:
 
             # Save entire process folder to gallery
             success, message = save_to_gallery_func(
-                target_dir=target_dir, processed_data=processed_data, gallery_name=gallery_name
+                target_dir=target_dir,
+                processed_data=processed_data,
+                gallery_name=gallery_name,
             )
 
             if success:
@@ -194,7 +198,9 @@ class EventHandlers:
         # Get image files for logging
         target_dir_images = os.path.join(target_dir, "images")
         all_files = (
-            sorted(os.listdir(target_dir_images)) if os.path.isdir(target_dir_images) else []
+            sorted(os.listdir(target_dir_images))
+            if os.path.isdir(target_dir_images)
+            else []
         )
 
         print("Running DepthAnything3 model...")
@@ -223,7 +229,9 @@ class EventHandlers:
 
         if infer_gs:
             try:
-                gsvideo_path = sorted(glob(os.path.join(target_dir, "gs_video", "*.mp4")))[-1]
+                gsvideo_path = sorted(
+                    glob(os.path.join(target_dir, "gs_video", "*.mp4"))
+                )[-1]
                 gs_video_visible = True
                 gs_info_visible = False
             except IndexError:
@@ -243,8 +251,8 @@ class EventHandlers:
         )
 
         # Update view selectors based on available views
-        depth_selector, measure_selector = self.visualization_handler.update_view_selectors(
-            processed_data
+        depth_selector, measure_selector = (
+            self.visualization_handler.update_view_selectors(processed_data)
         )
 
         return (
@@ -398,10 +406,20 @@ class EventHandlers:
 
                     for i in range(num_images):
                         processed_data[i] = {
-                            "image": predictions["images"][i] if "images" in predictions else None,
-                            "depth": predictions["depths"][i] if "depths" in predictions else None,
+                            "image": (
+                                predictions["images"][i]
+                                if "images" in predictions
+                                else None
+                            ),
+                            "depth": (
+                                predictions["depths"][i]
+                                if "depths" in predictions
+                                else None
+                            ),
                             "depth_image": os.path.join(
-                                target_dir, "depth_vis", f"{i:04d}.jpg"  # Fixed: use .jpg not .png
+                                target_dir,
+                                "depth_vis",
+                                f"{i:04d}.jpg",  # Fixed: use .jpg not .png
                             ),
                             "intrinsics": (
                                 predictions["intrinsics"][i]
@@ -414,7 +432,9 @@ class EventHandlers:
 
                     # Update measure view selector
                     choices = [f"View {i + 1}" for i in range(num_images)]
-                    measure_view_selector = gr.Dropdown(choices=choices, value=choices[0])
+                    measure_view_selector = gr.Dropdown(
+                        choices=choices, value=choices[0]
+                    )
 
                 except Exception as e:
                     print(f"Error loading cached data: {e}")
@@ -516,7 +536,9 @@ class EventHandlers:
         Returns:
             Tuple of (measure_image, depth_right_half, measure_points)
         """
-        return self.visualization_handler.update_measure_view(processed_data, view_index)
+        return self.visualization_handler.update_measure_view(
+            processed_data, view_index
+        )
 
     def measure(
         self,
@@ -556,7 +578,11 @@ class EventHandlers:
         """
         try:
             if not image_gallery or len(image_gallery) == 0:
-                return image_gallery, "No images available to select as first frame.", ""
+                return (
+                    image_gallery,
+                    "No images available to select as first frame.",
+                    "",
+                )
 
             # Handle None or invalid selected_index
             if (

@@ -151,7 +151,12 @@ class ETH3D(Dataset):
                         continue
                     # Format: IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME
                     image_id = parts[0]
-                    qw, qx, qy, qz = float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])
+                    qw, qx, qy, qz = (
+                        float(parts[1]),
+                        float(parts[2]),
+                        float(parts[3]),
+                        float(parts[4]),
+                    )
                     tx, ty, tz = float(parts[5]), float(parts[6]), float(parts[7])
                     camera_id = parts[8]
                     name = parts[9]
@@ -204,16 +209,20 @@ class ETH3D(Dataset):
         # Ground truth mesh path
         gt_mesh_path = os.path.join(scene_dir, "combined_mesh.ply")
 
-        out = Dict({
-            "image_files": [],
-            "extrinsics": [],
-            "intrinsics": [],
-            "aux": Dict({
-                "gt_mesh_path": gt_mesh_path,
-                "heights": [],
-                "widths": [],
-            }),
-        })
+        out = Dict(
+            {
+                "image_files": [],
+                "extrinsics": [],
+                "intrinsics": [],
+                "aux": Dict(
+                    {
+                        "gt_mesh_path": gt_mesh_path,
+                        "heights": [],
+                        "widths": [],
+                    }
+                ),
+            }
+        )
 
         # Process each image (preserve original order from images.txt)
         filtered_count = 0
@@ -232,11 +241,14 @@ class ETH3D(Dataset):
                 continue
 
             # Build intrinsics matrix
-            ixt = np.array([
-                [cam_info["fx"], 0, cam_info["cx"]],
-                [0, cam_info["fy"], cam_info["cy"]],
-                [0, 0, 1],
-            ], dtype=np.float32)
+            ixt = np.array(
+                [
+                    [cam_info["fx"], 0, cam_info["cx"]],
+                    [0, cam_info["fy"], cam_info["cy"]],
+                    [0, 0, 1],
+                ],
+                dtype=np.float32,
+            )
 
             # Build extrinsics matrix (world-to-camera)
             # COLMAP format: world point -> camera point
@@ -257,11 +269,15 @@ class ETH3D(Dataset):
         # Print scene info
         total_images = len(pose_dict)
         used_images = len(out.image_files)
-        print(f"[ETH3D] {scene}: {used_images}/{total_images} images "
-              f"(filtered {filtered_count}, missing {total_images - used_images - filtered_count})")
-        
+        print(
+            f"[ETH3D] {scene}: {used_images}/{total_images} images "
+            f"(filtered {filtered_count}, missing {total_images - used_images - filtered_count})"
+        )
+
         if used_images < 3:
-            print(f"[ETH3D] ⚠️  WARNING: {scene} has only {used_images} images - evaluation may fail!")
+            print(
+                f"[ETH3D] ⚠️  WARNING: {scene} has only {used_images} images - evaluation may fail!"
+            )
 
         # Cache result
         self._scene_cache[scene] = out
@@ -317,11 +333,15 @@ class ETH3D(Dataset):
 
         if os.path.exists(gt_meta_path):
             data = np.load(gt_meta_path, allow_pickle=True)
-            return Dict({
-                "extrinsics": data["extrinsics"],
-                "intrinsics": data["intrinsics"],
-                "image_files": data["image_files"] if "image_files" in data else None,
-            })
+            return Dict(
+                {
+                    "extrinsics": data["extrinsics"],
+                    "intrinsics": data["intrinsics"],
+                    "image_files": (
+                        data["image_files"] if "image_files" in data else None
+                    ),
+                }
+            )
         return None
 
     def fuse3d(self, scene: str, result_path: str, fuse_path: str, mode: str) -> None:
@@ -501,7 +521,11 @@ class ETH3D(Dataset):
             depths_out.append(depth)
 
         # Use GT intrinsics and extrinsics (already at original image size)
-        return np.stack(depths_out), gt_data.intrinsics.copy(), gt_data.extrinsics.copy()
+        return (
+            np.stack(depths_out),
+            gt_data.intrinsics.copy(),
+            gt_data.extrinsics.copy(),
+        )
 
     def _load_gt_mask(self, scene: str, image_name: str, shape: tuple) -> np.ndarray:
         """
@@ -522,8 +546,11 @@ class ETH3D(Dataset):
 
         # GT mask file path
         gt_mask_path = os.path.join(
-            self.data_root, scene, "masks_for_images", "dslr_images",
-            image_name.replace(".JPG", ".png")
+            self.data_root,
+            scene,
+            "masks_for_images",
+            "dslr_images",
+            image_name.replace(".JPG", ".png"),
         )
 
         # GT depth file path (used to determine valid depth regions)
@@ -550,12 +577,14 @@ class ETH3D(Dataset):
         gt_depth_copy = gt_depth.copy()
         gt_depth_copy[gt_mask == 1] = 0
 
-        invalid_mask_from_gt_depth = np.logical_or(gt_depth_copy == 0, gt_depth_copy == np.inf)
+        invalid_mask_from_gt_depth = np.logical_or(
+            gt_depth_copy == 0, gt_depth_copy == np.inf
+        )
 
         # zero_mask: valid region that should be kept
         zero_mask = np.logical_and(
             np.logical_not(invalid_mask_from_gt),
-            np.logical_not(invalid_mask_from_gt_depth)
+            np.logical_not(invalid_mask_from_gt_depth),
         )
 
         return zero_mask
@@ -591,4 +620,3 @@ class ETH3D(Dataset):
             depth[invalid_mask] = 0.0
 
         return depth
-

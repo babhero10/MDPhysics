@@ -57,7 +57,11 @@ class PositionGetter:
             self.position_cache[height, width] = positions
 
         cached_positions = self.position_cache[height, width]
-        return cached_positions.view(1, height * width, 2).expand(batch_size, -1, -1).clone()
+        return (
+            cached_positions.view(1, height * width, 2)
+            .expand(batch_size, -1, -1)
+            .clone()
+        )
 
 
 class RotaryPositionEmbedding2D(nn.Module):

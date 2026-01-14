@@ -209,7 +209,9 @@ class PCARGBVisualizer:
         X: (N,D) where N = H*W
         Returns PCs_raw: (N,3) using stable basis (fixed or Procrustes-aligned)
         """
-        assert self.mean_ref is not None and self.V3_ref is not None, "Call fit_reference() first."
+        assert (
+            self.mean_ref is not None and self.V3_ref is not None
+        ), "Call fit_reference() first."
         X = torch.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
         Xc = X - self.mean_ref
 
@@ -258,7 +260,9 @@ class PCARGBVisualizer:
         if frame.ndim != 3:
             raise ValueError("transform_frame expects (H,W,D).")
         H, W, D = frame.shape
-        X = torch.from_numpy(frame.reshape(H * W, D)).to(self.device, dtype=torch.float32)
+        X = torch.from_numpy(frame.reshape(H * W, D)).to(
+            self.device, dtype=torch.float32
+        )
         PCs_raw = self._project_with_stable_colors(X)
         PCs = self._normalize_rgb(PCs_raw).reshape(H, W, 3)
         if self.return_uint8:

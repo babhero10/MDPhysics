@@ -29,7 +29,11 @@ from depth_anything_3.utils.alignment import (
     sample_tensor_for_quantile,
     set_sky_regions_to_max_depth,
 )
-from depth_anything_3.utils.geometry import affine_inverse, as_homogeneous, map_pdf_to_opacity
+from depth_anything_3.utils.geometry import (
+    affine_inverse,
+    as_homogeneous,
+    map_pdf_to_opacity,
+)
 from depth_anything_3.utils.ray_utils import get_extrinsic_from_camray
 
 
@@ -63,20 +67,30 @@ class DepthAnything3Net(nn.Module):
     # Patch size for feature extraction
     PATCH_SIZE = 14
 
-    def __init__(self, net, head, cam_dec=None, cam_enc=None, gs_head=None, gs_adapter=None):
+    def __init__(
+        self, net, head, cam_dec=None, cam_enc=None, gs_head=None, gs_adapter=None
+    ):
         """
         Initialize DepthAnything3Net with given yaml-initialized configuration.
         """
         super().__init__()
-        self.backbone = net if isinstance(net, nn.Module) else create_object(_wrap_cfg(net))
-        self.head = head if isinstance(head, nn.Module) else create_object(_wrap_cfg(head))
+        self.backbone = (
+            net if isinstance(net, nn.Module) else create_object(_wrap_cfg(net))
+        )
+        self.head = (
+            head if isinstance(head, nn.Module) else create_object(_wrap_cfg(head))
+        )
         self.cam_dec, self.cam_enc = None, None
         if cam_dec is not None:
             self.cam_dec = (
-                cam_dec if isinstance(cam_dec, nn.Module) else create_object(_wrap_cfg(cam_dec))
+                cam_dec
+                if isinstance(cam_dec, nn.Module)
+                else create_object(_wrap_cfg(cam_dec))
             )
             self.cam_enc = (
-                cam_enc if isinstance(cam_enc, nn.Module) else create_object(_wrap_cfg(cam_enc))
+                cam_enc
+                if isinstance(cam_enc, nn.Module)
+                else create_object(_wrap_cfg(cam_enc))
             )
         self.gs_adapter, self.gs_head = None, None
         if gs_head is not None and gs_adapter is not None:
@@ -112,8 +126,8 @@ class DepthAnything3Net(nn.Module):
 
         Args:
             x: Input images (B, N, 3, H, W)
-            extrinsics: Camera extrinsics (B, N, 4, 4) 
-            intrinsics: Camera intrinsics (B, N, 3, 3) 
+            extrinsics: Camera extrinsics (B, N, 4, 4)
+            intrinsics: Camera intrinsics (B, N, 3, 3)
             feat_layers: List of layer indices to extract features from
             infer_gs: Enable Gaussian Splatting branch
             use_ray_pose: Use ray-based pose estimation
@@ -130,7 +144,10 @@ class DepthAnything3Net(nn.Module):
             cam_token = None
 
         feats, aux_feats = self.backbone(
-            x, cam_token=cam_token, export_feat_layers=export_feat_layers, ref_view_strategy=ref_view_strategy
+            x,
+            cam_token=cam_token,
+            export_feat_layers=export_feat_layers,
+            ref_view_strategy=ref_view_strategy,
         )
         # feats = [[item for item in feat] for feat in feats]
         H, W = x.shape[-2], x.shape[-1]
@@ -143,12 +160,16 @@ class DepthAnything3Net(nn.Module):
             else:
                 output = self._process_camera_estimation(feats, H, W, output)
             if infer_gs:
-                output = self._process_gs_head(feats, H, W, output, x, extrinsics, intrinsics)
-        
-        output = self._process_mono_sky_estimation(output)    
+                output = self._process_gs_head(
+                    feats, H, W, output, x, extrinsics, intrinsics
+                )
+
+        output = self._process_mono_sky_estimation(output)
 
         # Extract auxiliary features if requested
-        output.aux = self._extract_auxiliary_features(aux_feats, export_feat_layers, H, W)
+        output.aux = self._extract_auxiliary_features(
+            aux_feats, export_feat_layers, H, W
+        )
 
         return output
 
@@ -163,10 +184,12 @@ class DepthAnything3Net(nn.Module):
             return output
         if (~non_sky_mask).sum() <= 10:
             return output
-        
+
         non_sky_depth = output.depth[non_sky_mask]
         if non_sky_depth.numel() > 100000:
-            idx = torch.randint(0, non_sky_depth.numel(), (100000,), device=non_sky_depth.device)
+            idx = torch.randint(
+                0, non_sky_depth.numel(), (100000,), device=non_sky_depth.device
+            )
             sampled_depth = non_sky_depth[idx]
         else:
             sampled_depth = non_sky_depth
@@ -183,15 +206,22 @@ class DepthAnything3Net(nn.Module):
     ) -> Dict[str, torch.Tensor]:
         """Process ray pose estimation if ray pose decoder is available."""
         if "ray" in output and "ray_conf" in output:
-            pred_extrinsic, pred_focal_lengths, pred_principal_points = get_extrinsic_from_camray(
-                output.ray,
-                output.ray_conf,
-                output.ray.shape[-3],
-                output.ray.shape[-2],
+            pred_extrinsic, pred_focal_lengths, pred_principal_points = (
+                get_extrinsic_from_camray(
+                    output.ray,
+                    output.ray_conf,
+                    output.ray.shape[-3],
+                    output.ray.shape[-2],
+                )
             )
-            pred_extrinsic = affine_inverse(pred_extrinsic) # w2c -> c2w
+            pred_extrinsic = affine_inverse(pred_extrinsic)  # w2c -> c2w
             pred_extrinsic = pred_extrinsic[:, :, :3, :]
-            pred_intrinsic = torch.eye(3, 3)[None, None].repeat(pred_extrinsic.shape[0], pred_extrinsic.shape[1], 1, 1).clone().to(pred_extrinsic.device)
+            pred_intrinsic = (
+                torch.eye(3, 3)[None, None]
+                .repeat(pred_extrinsic.shape[0], pred_extrinsic.shape[1], 1, 1)
+                .clone()
+                .to(pred_extrinsic.device)
+            )
             pred_intrinsic[:, :, 0, 0] = pred_focal_lengths[:, :, 0] / 2 * width
             pred_intrinsic[:, :, 1, 1] = pred_focal_lengths[:, :, 1] / 2 * height
             pred_intrinsic[:, :, 0, 2] = pred_principal_points[:, :, 0] * width * 0.5
@@ -240,7 +270,9 @@ class DepthAnything3Net(nn.Module):
         """Process 3DGS parameters estimation if 3DGS head is available."""
         if self.gs_head is None or self.gs_adapter is None:
             return output
-        assert output.get("depth", None) is not None, "must provide MV depth for the GS head."
+        assert (
+            output.get("depth", None) is not None
+        ), "must provide MV depth for the GS head."
 
         # The depth is defined in the DA3 model's camera space,
         # so even with provided GT camera poses,
@@ -360,7 +392,13 @@ class NestedDepthAnything3Net(nn.Module):
         """
         # Get predictions from both branches
         output = self.da3(
-            x, extrinsics, intrinsics, export_feat_layers=export_feat_layers, infer_gs=infer_gs, use_ray_pose=use_ray_pose, ref_view_strategy=ref_view_strategy
+            x,
+            extrinsics,
+            intrinsics,
+            export_feat_layers=export_feat_layers,
+            infer_gs=infer_gs,
+            use_ray_pose=use_ray_pose,
+            ref_view_strategy=ref_view_strategy,
         )
         metric_output = self.da3_metric(x)
 
@@ -394,12 +432,18 @@ class NestedDepthAnything3Net(nn.Module):
 
         # Sample depth confidence for quantile computation
         depth_conf_ns = output.depth_conf[non_sky_mask]
-        depth_conf_sampled = sample_tensor_for_quantile(depth_conf_ns, max_samples=100000)
+        depth_conf_sampled = sample_tensor_for_quantile(
+            depth_conf_ns, max_samples=100000
+        )
         median_conf = torch.quantile(depth_conf_sampled, 0.5)
 
         # Compute alignment mask
         align_mask = compute_alignment_mask(
-            output.depth_conf, non_sky_mask, output.depth, metric_output.depth, median_conf
+            output.depth_conf,
+            non_sky_mask,
+            output.depth,
+            metric_output.depth,
+            median_conf,
         )
 
         # Compute scale factor using least squares
@@ -428,7 +472,9 @@ class NestedDepthAnything3Net(nn.Module):
         # Use sampling to safely compute quantile on large tensors
         non_sky_depth = output.depth[non_sky_mask]
         if non_sky_depth.numel() > 100000:
-            idx = torch.randint(0, non_sky_depth.numel(), (100000,), device=non_sky_depth.device)
+            idx = torch.randint(
+                0, non_sky_depth.numel(), (100000,), device=non_sky_depth.device
+            )
             sampled_depth = non_sky_depth[idx]
         else:
             sampled_depth = non_sky_depth

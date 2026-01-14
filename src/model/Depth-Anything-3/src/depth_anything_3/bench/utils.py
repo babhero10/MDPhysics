@@ -318,7 +318,9 @@ def compute_pose(pred_se3: torch.Tensor, gt_se3: torch.Tensor) -> Dict:
     pred_se3 = align_to_first_camera(pred_se3)
     gt_se3 = align_to_first_camera(gt_se3)
 
-    rel_rangle_deg, rel_tangle_deg = se3_to_relative_pose_error(pred_se3, gt_se3, len(pred_se3))
+    rel_rangle_deg, rel_tangle_deg = se3_to_relative_pose_error(
+        pred_se3, gt_se3, len(pred_se3)
+    )
     rError = rel_rangle_deg.cpu().numpy()
     tError = rel_tangle_deg.cpu().numpy()
 
@@ -346,7 +348,10 @@ def align_to_first_camera(camera_poses: torch.Tensor) -> torch.Tensor:
 
 
 def rotation_angle(
-    rot_gt: torch.Tensor, rot_pred: torch.Tensor, batch_size: int = None, eps: float = 1e-15
+    rot_gt: torch.Tensor,
+    rot_pred: torch.Tensor,
+    batch_size: int = None,
+    eps: float = 1e-15,
 ) -> torch.Tensor:
     """
     Calculate rotation angle error between ground truth and predicted rotations.
@@ -472,12 +477,20 @@ def se3_to_relative_pose_error(
     pair_idx_i1, pair_idx_i2 = build_pair_index(num_frames)
 
     # Compute relative camera poses between pairs using closed-form inverse
-    relative_pose_gt = closed_form_inverse_se3(gt_se3[pair_idx_i1]).bmm(gt_se3[pair_idx_i2])
-    relative_pose_pred = closed_form_inverse_se3(pred_se3[pair_idx_i1]).bmm(pred_se3[pair_idx_i2])
+    relative_pose_gt = closed_form_inverse_se3(gt_se3[pair_idx_i1]).bmm(
+        gt_se3[pair_idx_i2]
+    )
+    relative_pose_pred = closed_form_inverse_se3(pred_se3[pair_idx_i1]).bmm(
+        pred_se3[pair_idx_i2]
+    )
 
     # Compute the difference in rotation and translation
-    rel_rangle_deg = rotation_angle(relative_pose_gt[:, :3, :3], relative_pose_pred[:, :3, :3])
-    rel_tangle_deg = translation_angle(relative_pose_gt[:, :3, 3], relative_pose_pred[:, :3, 3])
+    rel_rangle_deg = rotation_angle(
+        relative_pose_gt[:, :3, :3], relative_pose_pred[:, :3, :3]
+    )
+    rel_tangle_deg = translation_angle(
+        relative_pose_gt[:, :3, 3], relative_pose_pred[:, :3, 3]
+    )
 
     return rel_rangle_deg, rel_tangle_deg
 
@@ -522,4 +535,3 @@ def closed_form_inverse_se3(
     inverted_matrix[:, :3, 3:] = top_right
 
     return inverted_matrix
-

@@ -651,9 +651,9 @@ def build_group_list(root_dir: str) -> dict:
                     spath = os.path.join(gpath, sname)
                     if not os.path.isdir(spath):
                         continue
-                    if os.path.exists(os.path.join(spath, "scene.glb")) and os.path.exists(
-                        os.path.join(spath, "scene.jpg")
-                    ):
+                    if os.path.exists(
+                        os.path.join(spath, "scene.glb")
+                    ) and os.path.exists(os.path.join(spath, "scene.jpg")):
                         has_scene = True
                         break
             except Exception:
@@ -683,7 +683,9 @@ def build_group_manifest(root_dir: str, group: str) -> dict:
             dpath = os.path.join(spath, "depth_vis")
             if os.path.isdir(dpath):
                 files = [
-                    f for f in os.listdir(dpath) if os.path.splitext(f)[1].lower() in IMAGE_EXTS
+                    f
+                    for f in os.listdir(dpath)
+                    if os.path.splitext(f)[1].lower() in IMAGE_EXTS
                 ]
                 for fn in sorted(files):
                     depth_images.append("/" + _url_join(group, sname, "depth_vis", fn))
@@ -736,7 +738,9 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 self.send_error(HTTPStatus.BAD_REQUEST, "Invalid group name")
                 return
             data = json.dumps(
-                build_group_manifest(self.directory, group), ensure_ascii=False, indent=2
+                build_group_manifest(self.directory, group),
+                ensure_ascii=False,
+                indent=2,
             ).encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -761,10 +765,17 @@ def gallery():
         description="Depth Anything 3 Gallery Server (two-level, with pagination)"
     )
     parser.add_argument(
-        "-d", "--dir", required=True, help="Gallery root directory (two-level: group/scene)"
+        "-d",
+        "--dir",
+        required=True,
+        help="Gallery root directory (two-level: group/scene)",
     )
-    parser.add_argument("-p", "--port", type=int, default=8000, help="Port (default 8000)")
-    parser.add_argument("--host", default="127.0.0.1", help="Host address (default 127.0.0.1)")
+    parser.add_argument(
+        "-p", "--port", type=int, default=8000, help="Port (default 8000)"
+    )
+    parser.add_argument(
+        "--host", default="127.0.0.1", help="Host address (default 127.0.0.1)"
+    )
     parser.add_argument("--open", action="store_true", help="Open browser after launch")
     args = parser.parse_args()
 

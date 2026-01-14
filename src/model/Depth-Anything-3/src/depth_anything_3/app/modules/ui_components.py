@@ -50,7 +50,9 @@ class UIComponents:
             interactive=True,
             visible=True,
         )
-        input_images = gr.File(file_count="multiple", label="Upload Images", interactive=True)
+        input_images = gr.File(
+            file_count="multiple", label="Upload Images", interactive=True
+        )
         image_gallery = gr.Gallery(
             label="Preview",
             columns=4,
@@ -108,7 +110,9 @@ class UIComponents:
             )
         return gs_video, gs_info
 
-    def create_depth_section(self) -> Tuple[gr.Button, gr.Dropdown, gr.Button, gr.Image]:
+    def create_depth_section(
+        self,
+    ) -> Tuple[gr.Button, gr.Dropdown, gr.Button, gr.Image]:
         """
         Create the depth visualization section.
 
@@ -195,7 +199,9 @@ class UIComponents:
             measure_text,
         )
 
-    def create_inference_control_section(self) -> Tuple[gr.Dropdown, gr.Checkbox, gr.Dropdown]:
+    def create_inference_control_section(
+        self,
+    ) -> Tuple[gr.Dropdown, gr.Checkbox, gr.Dropdown]:
         """
         Create the inference control section (before inference).
 
@@ -255,15 +261,21 @@ class UIComponents:
                 gs_trj_mode = gr.Dropdown(
                     choices=["smooth", "extend"],
                     value="smooth",
-                    label=("Rendering trajectory for 3DGS viewpoints (requires n_views ≥ 2)"),
-                    info=("'smooth' for view interpolation; 'extend' for longer trajectory"),
+                    label=(
+                        "Rendering trajectory for 3DGS viewpoints (requires n_views ≥ 2)"
+                    ),
+                    info=(
+                        "'smooth' for view interpolation; 'extend' for longer trajectory"
+                    ),
                     visible=False,  # initially hidden
                 )
                 gs_video_quality = gr.Dropdown(
                     choices=["low", "medium", "high"],
                     value="low",
                     label=("Video quality for 3DGS rendered outputs"),
-                    info=("'low' for faster loading speed; 'high' for better visual quality"),
+                    info=(
+                        "'low' for faster loading speed; 'high' for better visual quality"
+                    ),
                     visible=False,  # initially hidden
                 )
 
@@ -340,8 +352,12 @@ class UIComponents:
                 gr.Markdown("### Visualization Option: (Click Reconstruct to update)")
                 show_cam = gr.Checkbox(label="Show Camera", value=True)
                 show_mesh = gr.Checkbox(label="Show Mesh", value=True)
-                filter_black_bg = gr.Checkbox(label="Filter Black Background", value=False)
-                filter_white_bg = gr.Checkbox(label="Filter White Background", value=False)
+                filter_black_bg = gr.Checkbox(
+                    label="Filter Black Background", value=False
+                )
+                filter_white_bg = gr.Checkbox(
+                    label="Filter White Background", value=False
+                )
                 gr.Markdown("### Reconstruction Options: (updated on next run)")
                 apply_mask_checkbox = gr.Checkbox(
                     label="Apply mask for predicted ambiguous depth classes & edges",
@@ -419,7 +435,9 @@ class UIComponents:
                         scene_idx = i + j
                         if scene_idx < len(scenes):
                             scene = scenes[scene_idx]
-                            with gr.Column(scale=1, elem_classes=["clickable-thumbnail"]):
+                            with gr.Column(
+                                scale=1, elem_classes=["clickable-thumbnail"]
+                            ):
                                 # Clickable thumbnail
                                 scene_img = gr.Image(
                                     value=scene["thumbnail"],

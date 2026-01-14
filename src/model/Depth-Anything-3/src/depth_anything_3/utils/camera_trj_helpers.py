@@ -23,7 +23,9 @@ try:
 except ImportError:
     from depth_anything_3.utils.logger import logger
 
-    logger.warn("Dependency 'scipy' not found. Required for interpolating camera trajectory.")
+    logger.warn(
+        "Dependency 'scipy' not found. Required for interpolating camera trajectory."
+    )
 
 from depth_anything_3.utils.geometry import as_homogeneous
 
@@ -65,8 +67,12 @@ def render_stabilization_path(poses, k_size=45):
     input_poses = torch.stack(input_poses)  # (num_frames, 3, 3)
 
     # Prepare Gaussian kernel
-    gaussian_kernel = cv2.getGaussianKernel(ksize=k_size, sigma=-1).astype(np.float32).squeeze()
-    gaussian_kernel = torch.tensor(gaussian_kernel, dtype=dtype, device=device).view(1, 1, -1)
+    gaussian_kernel = (
+        cv2.getGaussianKernel(ksize=k_size, sigma=-1).astype(np.float32).squeeze()
+    )
+    gaussian_kernel = torch.tensor(gaussian_kernel, dtype=dtype, device=device).view(
+        1, 1, -1
+    )
     pad = k_size // 2
 
     output_vectors = []
@@ -434,7 +440,9 @@ def render_wobble_inter_path(
     frame_per_round = n_skip * inter_len
     num_rotations = 1
 
-    t = torch.linspace(0, 1, frame_per_round, dtype=torch.float32, device=cam2world.device)
+    t = torch.linspace(
+        0, 1, frame_per_round, dtype=torch.float32, device=cam2world.device
+    )
     # t = (torch.cos(torch.pi * (t + 1)) + 1) / 2
     tgt_c2w_b = []
     tgt_intr_b = []

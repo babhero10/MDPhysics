@@ -42,7 +42,9 @@ from depth_anything_3.utils.constants import (
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-app = typer.Typer(help="Depth Anything 3 - Video depth estimation CLI", add_completion=False)
+app = typer.Typer(
+    help="Depth Anything 3 - Video depth estimation CLI", add_completion=False
+)
 
 
 # ============================================================================
@@ -180,7 +182,10 @@ def auto(
         typer.echo("  - Single image file (.jpg, .png, etc.)", err=True)
         typer.echo("  - Directory containing images", err=True)
         typer.echo("  - Video file (.mp4, .avi, etc.)", err=True)
-        typer.echo("  - COLMAP directory (with 'images/' and 'sparse/' subdirectories)", err=True)
+        typer.echo(
+            "  - COLMAP directory (with 'images/' and 'sparse/' subdirectories)",
+            err=True,
+        )
         raise typer.Exit(1)
 
     # Display detected type
@@ -281,7 +286,9 @@ def auto(
             f"Processing COLMAP directory (sparse subdirectory: '{sparse_subdir or 'default'}')..."
         )
         # Process input
-        image_files, extrinsics, intrinsics = ColmapHandler.process(input_path, sparse_subdir)
+        image_files, extrinsics, intrinsics = ColmapHandler.process(
+            input_path, sparse_subdir
+        )
 
         # Handle export directory
         export_dir = InputHandler.handle_export_dir(export_dir, auto_cleanup)
@@ -390,7 +397,9 @@ def image(
 
 @app.command()
 def images(
-    images_dir: str = typer.Argument(..., help="Path to directory containing input images"),
+    images_dir: str = typer.Argument(
+        ..., help="Path to directory containing input images"
+    ),
     image_extensions: str = typer.Option(
         "png,jpg,jpeg", help="Comma-separated image file extensions to process"
     ),
@@ -470,10 +479,12 @@ def images(
 @app.command()
 def colmap(
     colmap_dir: str = typer.Argument(
-        ..., help="Path to COLMAP directory containing 'images' and 'sparse' subdirectories"
+        ...,
+        help="Path to COLMAP directory containing 'images' and 'sparse' subdirectories",
     ),
     sparse_subdir: str = typer.Option(
-        "", help="Sparse reconstruction subdirectory (e.g., '0' for sparse/0/, empty for sparse/)"
+        "",
+        help="Sparse reconstruction subdirectory (e.g., '0' for sparse/0/, empty for sparse/)",
     ),
     align_to_input_ext_scale: bool = typer.Option(
         True, help="Align prediction to input extrinsics scale"
@@ -520,7 +531,9 @@ def colmap(
 ):
     """Run pose conditioned depth estimation on COLMAP data."""
     # Process input
-    image_files, extrinsics, intrinsics = ColmapHandler.process(colmap_dir, sparse_subdir)
+    image_files, extrinsics, intrinsics = ColmapHandler.process(
+        colmap_dir, sparse_subdir
+    )
 
     # Handle export directory
     export_dir = InputHandler.handle_export_dir(export_dir, auto_cleanup)
@@ -642,7 +655,9 @@ def backend(
     device: str = typer.Option("cuda", help="Device to use"),
     host: str = typer.Option("127.0.0.1", help="Host to bind to"),
     port: int = typer.Option(8008, help="Port to bind to"),
-    gallery_dir: str = typer.Option(DEFAULT_GALLERY_DIR, help="Gallery directory path (optional)"),
+    gallery_dir: str = typer.Option(
+        DEFAULT_GALLERY_DIR, help="Gallery directory path (optional)"
+    ),
 ):
     """Start model backend service with integrated gallery."""
     typer.echo("=" * 60)
@@ -685,7 +700,9 @@ def backend(
 @app.command()
 def gradio(
     model_dir: str = typer.Option(DEFAULT_MODEL, help="Model directory path"),
-    workspace_dir: str = typer.Option(DEFAULT_GRADIO_DIR, help="Workspace directory path"),
+    workspace_dir: str = typer.Option(
+        DEFAULT_GRADIO_DIR, help="Workspace directory path"
+    ),
     gallery_dir: str = typer.Option(DEFAULT_GALLERY_DIR, help="Gallery directory path"),
     host: str = typer.Option("127.0.0.1", help="Host address to bind to"),
     port: int = typer.Option(7860, help="Port number to bind to"),
@@ -734,7 +751,9 @@ def gradio(
             typer.echo("\n" + "=" * 60)
             typer.echo("Pre-caching mode enabled")
             if cache_gs_tag:
-                typer.echo(f"Scenes containing '{cache_gs_tag}' will use HIGH-RES + 3DGS")
+                typer.echo(
+                    f"Scenes containing '{cache_gs_tag}' will use HIGH-RES + 3DGS"
+                )
                 typer.echo(f"Other scenes will use LOW-RES only")
             else:
                 typer.echo(f"All scenes will use LOW-RES only")
@@ -785,7 +804,15 @@ def gallery(
         # Set command line arguments
         import sys
 
-        sys.argv = ["gallery", "--dir", gallery_dir, "--host", host, "--port", str(port)]
+        sys.argv = [
+            "gallery",
+            "--dir",
+            gallery_dir,
+            "--host",
+            host,
+            "--port",
+            str(port),
+        ]
         if open_browser:
             sys.argv.append("--open")
 

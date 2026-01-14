@@ -330,7 +330,9 @@ class VisualizationHandler:
             try:
                 for p in measure_points:
                     if 0 <= p[0] < image.shape[1] and 0 <= p[1] < image.shape[0]:
-                        image = cv2.circle(image, p, radius=5, color=(255, 0, 0), thickness=2)
+                        image = cv2.circle(
+                            image, p, radius=5, color=(255, 0, 0), thickness=2
+                        )
             except Exception as e:
                 print(f"Drawing error: {e}")
                 return [None, [], f"Drawing error: {e}"]
@@ -362,7 +364,9 @@ class VisualizationHandler:
                         and 0 <= point2[0] < image.shape[1]
                         and 0 <= point2[1] < image.shape[0]
                     ):
-                        image = cv2.line(image, point1, point2, color=(255, 0, 0), thickness=2)
+                        image = cv2.line(
+                            image, point1, point2, color=(255, 0, 0), thickness=2
+                        )
 
                     # Compute 3D distance using depth information and camera intrinsics
                     distance_text = "- **Distance: Unable to calculate 3D distance**"
@@ -407,7 +411,8 @@ class VisualizationHandler:
                             else:
                                 # Fallback to simplified calculation if no intrinsics
                                 pixel_distance = np.sqrt(
-                                    (point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2
+                                    (point1[0] - point2[0]) ** 2
+                                    + (point1[1] - point2[1]) ** 2
                                 )
                                 avg_depth = (d1 + d2) / 2
                                 scale_factor = avg_depth / 1000  # Rough scaling factor

@@ -80,7 +80,7 @@ class HiRoomDataset(Dataset):
         │   ├── pose/            # Camera poses (.npy)
         │   ├── cam_K.npy        # Camera intrinsics
         │   └── aliasing_mask/   # Aliasing masks
-        
+
         fused_pcd/
         └── {scene_name}.ply     # Ground truth fused point cloud
     """
@@ -136,16 +136,20 @@ class HiRoomDataset(Dataset):
         # Get all image names sorted
         image_names = sorted(os.listdir(image_dir))
 
-        out = Dict({
-            "image_files": [],
-            "extrinsics": [],
-            "intrinsics": [],
-            "aux": Dict({
-                "gt_pcd_path": gt_pcd_path,
-                "gt_depth_files": [],
-                "aliasing_mask_files": [],
-            }),
-        })
+        out = Dict(
+            {
+                "image_files": [],
+                "extrinsics": [],
+                "intrinsics": [],
+                "aux": Dict(
+                    {
+                        "gt_pcd_path": gt_pcd_path,
+                        "gt_depth_files": [],
+                        "aliasing_mask_files": [],
+                    }
+                ),
+            }
+        )
 
         for img_name in image_names:
             img_path = os.path.join(image_dir, img_name)
@@ -154,7 +158,9 @@ class HiRoomDataset(Dataset):
             # Depth and pose paths
             depth_path = os.path.join(scene_dir, "depth", f"{frame_name}.png")
             pose_path = os.path.join(scene_dir, "pose", f"{frame_name}.npy")
-            aliasing_mask_path = os.path.join(scene_dir, "aliasing_mask", f"{frame_name}.png")
+            aliasing_mask_path = os.path.join(
+                scene_dir, "aliasing_mask", f"{frame_name}.png"
+            )
 
             if not os.path.exists(pose_path):
                 continue
@@ -214,11 +220,13 @@ class HiRoomDataset(Dataset):
         if os.path.exists(gt_meta_path):
             data = np.load(gt_meta_path, allow_pickle=True)
             image_files = list(data["image_files"])
-            return Dict({
-                "extrinsics": data["extrinsics"],
-                "intrinsics": data["intrinsics"],
-                "image_files": image_files,
-            })
+            return Dict(
+                {
+                    "extrinsics": data["extrinsics"],
+                    "intrinsics": data["intrinsics"],
+                    "image_files": image_files,
+                }
+            )
         return None
 
     def fuse3d(self, scene: str, result_path: str, fuse_path: str, mode: str) -> None:
@@ -295,8 +303,13 @@ class HiRoomDataset(Dataset):
     # ------------------------------
 
     def _prep_unposed(
-        self, pred_data: Dict, gt_data: Dict, full_gt_data: Dict,
-        image_indices: list, orig_sizes: list, scene: str = None
+        self,
+        pred_data: Dict,
+        gt_data: Dict,
+        full_gt_data: Dict,
+        image_indices: list,
+        orig_sizes: list,
+        scene: str = None,
     ) -> tuple:
         """Prepare depths/intrinsics/extrinsics for recon_unposed mode."""
         # Scale alignment with fixed random_state for reproducibility
@@ -348,8 +361,13 @@ class HiRoomDataset(Dataset):
         return np.stack(depths_out), np.stack(intrinsics_out), extrinsics
 
     def _prep_posed(
-        self, pred_data: Dict, gt_data: Dict, full_gt_data: Dict,
-        image_indices: list, orig_sizes: list, scene: str = None
+        self,
+        pred_data: Dict,
+        gt_data: Dict,
+        full_gt_data: Dict,
+        image_indices: list,
+        orig_sizes: list,
+        scene: str = None,
     ) -> tuple:
         """Prepare depths/intrinsics/extrinsics for recon_posed mode."""
         # Scale alignment
@@ -388,8 +406,12 @@ class HiRoomDataset(Dataset):
             depths_out.append(depth)
 
         # Use GT intrinsics and extrinsics
-        gt_intrinsics = np.stack([full_gt_data.intrinsics[idx] for idx in image_indices])
-        gt_extrinsics = np.stack([full_gt_data.extrinsics[idx] for idx in image_indices])
+        gt_intrinsics = np.stack(
+            [full_gt_data.intrinsics[idx] for idx in image_indices]
+        )
+        gt_extrinsics = np.stack(
+            [full_gt_data.extrinsics[idx] for idx in image_indices]
+        )
 
         return np.stack(depths_out), gt_intrinsics, gt_extrinsics
 
@@ -437,4 +459,3 @@ class HiRoomDataset(Dataset):
             depth[invalid_mask] = 0.0
 
         return depth
-

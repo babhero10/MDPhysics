@@ -222,7 +222,9 @@ def _run_inference_task(task_id: str):
         # Update task status to running
         _tasks[task_id].status = "running"
         _tasks[task_id].started_at = start_time
-        _tasks[task_id].message = f"[{task_id}] Starting inference on {num_images} frames..."
+        _tasks[task_id].message = (
+            f"[{task_id}] Starting inference on {num_images} frames..."
+        )
         print(f"[{task_id}] Starting inference on {num_images} frames")
 
         # Pre-inference cleanup to ensure maximum available memory
@@ -288,15 +290,21 @@ def _run_inference_task(task_id: str):
             inference_kwargs["export_dir"] = request.export_dir
 
         if request.extrinsics:
-            inference_kwargs["extrinsics"] = np.array(request.extrinsics, dtype=np.float32)
+            inference_kwargs["extrinsics"] = np.array(
+                request.extrinsics, dtype=np.float32
+            )
 
         if request.intrinsics:
-            inference_kwargs["intrinsics"] = np.array(request.intrinsics, dtype=np.float32)
+            inference_kwargs["intrinsics"] = np.array(
+                request.intrinsics, dtype=np.float32
+            )
 
         # Run inference with timing
         inference_start_time = time.time()
         print(f"[{task_id}] Running model inference...")
-        _tasks[task_id].message = f"[{task_id}] Running model inference on {num_images} images..."
+        _tasks[task_id].message = (
+            f"[{task_id}] Running model inference on {num_images} images..."
+        )
         _tasks[task_id].progress = 0.3
 
         inference_started = True
@@ -337,7 +345,8 @@ def _run_inference_task(task_id: str):
         _tasks[task_id].status = "completed"
         _tasks[task_id].completed_at = time.time()
         _tasks[task_id].message = (
-            f"[{task_id}] Completed in {total_time:.2f}s " f"({avg_time_per_image:.2f}s per image)"
+            f"[{task_id}] Completed in {total_time:.2f}s "
+            f"({avg_time_per_image:.2f}s per image)"
         )
         _tasks[task_id].progress = 1.0
         _tasks[task_id].export_dir = request.export_dir
@@ -367,7 +376,9 @@ def _run_inference_task(task_id: str):
 
         _tasks[task_id].status = "failed"
         _tasks[task_id].completed_at = time.time()
-        _tasks[task_id].message = f"[{task_id}] Failed after {total_time:.2f}s: {error_msg}"
+        _tasks[task_id].message = (
+            f"[{task_id}] Failed after {total_time:.2f}s: {error_msg}"
+        )
 
         # Clear running state
         _running_task_id = None
@@ -427,7 +438,9 @@ def _cleanup_old_tasks():
             print(f"[CLEANUP] Removed excess task: {task_id}")
 
     # Count active tasks (only pending and running)
-    active_count = sum(1 for task in _tasks.values() if task.status in ["pending", "running"])
+    active_count = sum(
+        1 for task in _tasks.values() if task.status in ["pending", "running"]
+    )
     print(
         "[CLEANUP] Task cleanup completed. "
         f"Total tasks: {len(_tasks)}, Active tasks: {active_count}"
@@ -501,9 +514,9 @@ def build_group_list(root_dir: str) -> dict:
                     spath = os.path.join(gpath, sname)
                     if not os.path.isdir(spath):
                         continue
-                    if os.path.exists(os.path.join(spath, "scene.glb")) and os.path.exists(
-                        os.path.join(spath, "scene.jpg")
-                    ):
+                    if os.path.exists(
+                        os.path.join(spath, "scene.glb")
+                    ) and os.path.exists(os.path.join(spath, "scene.jpg")):
                         has_scene = True
                         break
             except Exception:
@@ -547,7 +560,8 @@ def build_group_manifest(root_dir: str, group: str) -> dict:
                     "id": sname,
                     "title": sname,
                     "model": "/gallery/" + _gallery_url_join(group, sname, "scene.glb"),
-                    "thumbnail": "/gallery/" + _gallery_url_join(group, sname, "scene.jpg"),
+                    "thumbnail": "/gallery/"
+                    + _gallery_url_join(group, sname, "scene.jpg"),
                     "depth_images": depth_images,
                 }
             )
@@ -556,7 +570,9 @@ def build_group_manifest(root_dir: str, group: str) -> dict:
     return {"group": group, "items": items}
 
 
-def create_app(model_dir: str, device: str = "cuda", gallery_dir: Optional[str] = None) -> FastAPI:
+def create_app(
+    model_dir: str, device: str = "cuda", gallery_dir: Optional[str] = None
+) -> FastAPI:
     """Create FastAPI application with model backend."""
     global _backend, _app
 
@@ -848,7 +864,9 @@ def create_app(model_dir: str, device: str = "cuda", gallery_dir: Optional[str] 
             uptime_str = "Not running"
 
         # Get tasks information
-        active_tasks = [task for task in _tasks.values() if task.status in ["pending", "running"]]
+        active_tasks = [
+            task for task in _tasks.values() if task.status in ["pending", "running"]
+        ]
         completed_tasks = [
             task for task in _tasks.values() if task.status in ["completed", "failed"]
         ]
@@ -1188,7 +1206,9 @@ def create_app(model_dir: str, device: str = "cuda", gallery_dir: Optional[str] 
 
         # Create task status
         if _running_task_id is not None:
-            status_msg = f"[{task_id}] Task queued (waiting for {_running_task_id} to complete)"
+            status_msg = (
+                f"[{task_id}] Task queued (waiting for {_running_task_id} to complete)"
+            )
         else:
             status_msg = f"[{task_id}] Task submitted"
 
@@ -1259,7 +1279,9 @@ def create_app(model_dir: str, device: str = "cuda", gallery_dir: Optional[str] 
     async def list_tasks():
         """List all tasks."""
         # Separate active and completed tasks
-        active_tasks = [task for task in _tasks.values() if task.status in ["pending", "running"]]
+        active_tasks = [
+            task for task in _tasks.values() if task.status in ["pending", "running"]
+        ]
         completed_tasks = [
             task for task in _tasks.values() if task.status in ["completed", "failed"]
         ]
@@ -1289,7 +1311,9 @@ def create_app(model_dir: str, device: str = "cuda", gallery_dir: Optional[str] 
 
         # Only allow deletion of completed/failed tasks
         if _tasks[task_id].status not in ["completed", "failed"]:
-            raise HTTPException(status_code=400, detail="Cannot delete running or pending tasks")
+            raise HTTPException(
+                status_code=400, detail="Cannot delete running or pending tasks"
+            )
 
         del _tasks[task_id]
         return {"message": f"Task {task_id} deleted successfully"}
@@ -1306,7 +1330,9 @@ def create_app(model_dir: str, device: str = "cuda", gallery_dir: Optional[str] 
             _backend.load_model()
             return {"message": "Model reloaded successfully"}
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to reload model: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to reload model: {str(e)}"
+            )
 
     # ============================================================================
     # Gallery routes

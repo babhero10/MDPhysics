@@ -218,7 +218,9 @@ class VideoHandler(InputHandler):
                 err=True,
             )
 
-        typer.echo(f"Extracting frames at {actual_fps:.2f} FPS (every {frame_interval} frame(s))")
+        typer.echo(
+            f"Extracting frames at {actual_fps:.2f} FPS (every {frame_interval} frame(s))"
+        )
 
         # Create output directory
         frames_dir = os.path.join(output_dir, "input_images")

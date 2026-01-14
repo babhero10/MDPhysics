@@ -71,8 +71,12 @@ def weighted_estimate_sim3_torch(source_points, target_points, weights):
     src_centered = source_points - mu_src
     tgt_centered = target_points - mu_tgt
 
-    scale_src = torch.sqrt(torch.sum(normalized_weights * torch.sum(src_centered**2, dim=1)))
-    scale_tgt = torch.sqrt(torch.sum(normalized_weights * torch.sum(tgt_centered**2, dim=1)))
+    scale_src = torch.sqrt(
+        torch.sum(normalized_weights * torch.sum(src_centered**2, dim=1))
+    )
+    scale_tgt = torch.sqrt(
+        torch.sum(normalized_weights * torch.sum(tgt_centered**2, dim=1))
+    )
     s = scale_tgt / scale_src
 
     weighted_src = (s * src_centered) * torch.sqrt(normalized_weights)[:, None]
@@ -83,12 +87,18 @@ def weighted_estimate_sim3_torch(source_points, target_points, weights):
     return s.cpu().numpy(), mu_src.cpu().numpy(), mu_tgt.cpu().numpy(), H.cpu().numpy()
 
 
-def weighted_estimate_sim3_numba_torch(source_points, target_points, weights, align_method="sim3"):
+def weighted_estimate_sim3_numba_torch(
+    source_points, target_points, weights, align_method="sim3"
+):
 
     if align_method == "sim3":
-        s, mu_src, mu_tgt, H = weighted_estimate_sim3_torch(source_points, target_points, weights)
+        s, mu_src, mu_tgt, H = weighted_estimate_sim3_torch(
+            source_points, target_points, weights
+        )
     elif align_method == "se3" or align_method == "scale+se3":
-        s, mu_src, mu_tgt, H = weighted_estimate_se3_torch(source_points, target_points, weights)
+        s, mu_src, mu_tgt, H = weighted_estimate_se3_torch(
+            source_points, target_points, weights
+        )
 
     if s < 0:
         raise ValueError("Total weight too small for meaningful estimation")
@@ -123,7 +133,9 @@ def huber_loss_torch(r, delta):
 
     abs_r = torch.abs(r_torch)
     result = torch.where(
-        abs_r <= delta_torch, 0.5 * r_torch**2, delta_torch * (abs_r - 0.5 * delta_torch)
+        abs_r <= delta_torch,
+        0.5 * r_torch**2,
+        delta_torch * (abs_r - 0.5 * delta_torch),
     )
 
     return result.cpu().numpy()
@@ -169,7 +181,9 @@ def robust_weighted_estimate_sim3_torch(
     tgt = tgt.astype(np.float32)
     init_weights = init_weights.astype(np.float32)
 
-    s, R, t = weighted_estimate_sim3_numba_torch(src, tgt, init_weights, align_method=align_method)
+    s, R, t = weighted_estimate_sim3_numba_torch(
+        src, tgt, init_weights, align_method=align_method
+    )
 
     prev_error = float("inf")
 
@@ -216,7 +230,9 @@ def apply_sim3_direct_torch(point_maps, s, R, t, device=None):
         point_maps_torch = torch.from_numpy(point_maps).float()
         R_torch = torch.from_numpy(R).float()
         t_torch = torch.from_numpy(t).float()
-        s_torch = torch.tensor(s).float() if np.isscalar(s) else torch.from_numpy(s).float()
+        s_torch = (
+            torch.tensor(s).float() if np.isscalar(s) else torch.from_numpy(s).float()
+        )
     else:
         point_maps_torch = point_maps
         R_torch = R

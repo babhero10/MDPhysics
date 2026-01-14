@@ -125,7 +125,10 @@ class ModelInference:
             raise ValueError("No images found. Check your upload.")
 
         # Map UI options to actual method names
-        method_mapping = {"high_res": "lower_bound_resize", "low_res": "upper_bound_resize"}
+        method_mapping = {
+            "high_res": "lower_bound_resize",
+            "low_res": "upper_bound_resize",
+        }
         actual_method = method_mapping.get(process_res_method, "upper_bound_crop")
 
         # Run model inference
@@ -245,11 +248,14 @@ class ModelInference:
                 processed_data[i] = {
                     "depth_image": depth_file,
                     "image": processed_image,
-                    "original_image_path": image_paths[i] if i < len(image_paths) else None,
+                    "original_image_path": (
+                        image_paths[i] if i < len(image_paths) else None
+                    ),
                     "depth": prediction.depth[i] if i < len(prediction.depth) else None,
                     "intrinsics": (
                         prediction.intrinsics[i]
-                        if prediction.intrinsics is not None and i < len(prediction.intrinsics)
+                        if prediction.intrinsics is not None
+                        and i < len(prediction.intrinsics)
                         else None
                     ),
                     "mask": None,  # No mask information available

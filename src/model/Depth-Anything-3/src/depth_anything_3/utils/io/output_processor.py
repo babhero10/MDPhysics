@@ -102,7 +102,9 @@ class OutputProcessor:
             conf = conf.squeeze(0).cpu().numpy()  # (N, H, W)
         return conf
 
-    def _extract_extrinsics(self, model_output: dict[str, torch.Tensor]) -> np.ndarray | None:
+    def _extract_extrinsics(
+        self, model_output: dict[str, torch.Tensor]
+    ) -> np.ndarray | None:
         """
         Extract extrinsics tensor from model output and convert to numpy.
 
@@ -117,7 +119,9 @@ class OutputProcessor:
             extrinsics = extrinsics.squeeze(0).cpu().numpy()  # (N, 4, 4)
         return extrinsics
 
-    def _extract_intrinsics(self, model_output: dict[str, torch.Tensor]) -> np.ndarray | None:
+    def _extract_intrinsics(
+        self, model_output: dict[str, torch.Tensor]
+    ) -> np.ndarray | None:
         """
         Extract intrinsics tensor from model output and convert to numpy.
 
