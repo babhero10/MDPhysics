@@ -16,6 +16,7 @@ class DPTVisualizer:
         colormap: str = "magma",
         vmin: Optional[float] = None,
         vmax: Optional[float] = None,
+        invert: bool = False,
     ) -> np.ndarray:
         """
         Visualize depth map.
@@ -24,12 +25,16 @@ class DPTVisualizer:
             depth: Depth map (H, W) or (1, H, W)
             colormap: Matplotlib colormap name
             vmin, vmax: Value range for normalization
+            invert: Whether to invert depth (1/depth) before visualization
 
         Returns:
             RGB visualization (H, W, 3) in range [0, 255]
         """
         if depth.ndim == 3:
             depth = depth[0]  # Remove channel dimension
+
+        if invert:
+            depth = 1.0 / (depth + 1e-6)
 
         # Normalize depth
         if vmin is None:
@@ -109,23 +114,20 @@ class DPTVisualizer:
             vis_items.append(("Predicted Sharp", sharp))
 
         if "depth" in predictions:
-            depth_vis = DPTVisualizer.visualize_depth(predictions["depth"])
-            vis_items.append(("Depth", depth_vis))
+            depth = predictions["depth"]
+            if depth.ndim == 3:
+                depth = depth[0]
+            vis_items.append(("Depth", depth))
 
         if "motion" in predictions:
             motion = predictions["motion"]
-            # motion is (6, H, W)
-            # 0:3 -> Linear Velocity
-            # 3:6 -> Angular Velocity
-            linear = motion[0:3, :, :]
-            angular = motion[3:6, :, :]
+            # motion is (6, H, W) -> 0:3 Linear, 3:6 Angular
+            # Visualize magnitudes with heatmaps for better scale perception
+            linear_mag = np.linalg.norm(motion[0:3, :, :], axis=0)
+            angular_mag = np.linalg.norm(motion[3:6, :, :], axis=0)
 
-            vis_items.append(
-                ("Linear Velocity", DPTVisualizer.visualize_vector_map(linear))
-            )
-            vis_items.append(
-                ("Angular Velocity", DPTVisualizer.visualize_vector_map(angular))
-            )
+            vis_items.append(("Linear Velocity", linear_mag))
+            vis_items.append(("Angular Velocity", angular_mag))
 
         title_str = ""
         if metrics is not None:
@@ -134,10 +136,10 @@ class DPTVisualizer:
 
         # Create grid
         n_items = len(vis_items)
-        n_cols = 2
+        n_cols = 3 if n_items > 4 else 2
         n_rows = (n_items + n_cols - 1) // n_cols
 
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 6 * n_rows))
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
         if n_rows == 1:
             axes = axes.reshape(1, -1)
         elif n_rows > 1 and n_cols == 1:
@@ -146,14 +148,17 @@ class DPTVisualizer:
         if title_str:
             fig.suptitle(title_str, fontsize=14, y=0.98)
 
-        # Handle single subplot case (axes is not array if 1x1, but we forced reshape or grid size >= 2 usually)
-        # With n_cols=2, we always have array unless n_items=1 which is unlikely (Input + something).
-
-        # Flatten axes for easy iteration if it's a grid
+        # Flatten axes for easy iteration
         axes_flat = axes.flatten()
 
         for idx, (title, vis) in enumerate(vis_items):
-            axes_flat[idx].imshow(vis)
+            if title in ["Depth", "Linear Velocity", "Angular Velocity"]:
+                im = axes_flat[idx].imshow(vis, cmap="magma")
+                fig.colorbar(im, ax=axes_flat[idx], fraction=0.046, pad=0.04)
+            else:
+                # RGB images
+                axes_flat[idx].imshow(vis)
+
             axes_flat[idx].set_title(title, fontsize=14)
             axes_flat[idx].axis("off")
 

@@ -4,7 +4,7 @@ defaults:
   - model: mdphysics
   - metrics: default
   - logger: default
-  - train: stage3
+  - train: stage1
 
 device: "cuda:0"
 seed: 42

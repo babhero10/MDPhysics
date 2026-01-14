@@ -223,9 +223,13 @@ class DepthHead(DPTHead):
         super().__init__(in_channels, out_channels=1, use_bn=use_bn)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        depth = super().forward(x)
-        # Ensure positive depth values
-        depth = F.sigmoid(depth)
+        out = super().forward(x)
+        # 1 & 2: Predict inverse depth and lower bound
+        # disp = eps + softplus(out)
+        # depth = 1 / disp
+        eps = 1e-2
+        disp = F.softplus(out) + eps
+        depth = 1.0 / disp
         return depth
 
 
@@ -902,9 +906,13 @@ class DPT(nn.Module):
         }
 
         if self.cfg.used_image_blurring_block == "pred":
-            outputs["blur_image"] = motion_blur(refined_rgb, depth, motion)
+            outputs["blur_image"] = motion_blur(
+                refined_rgb, depth, motion, exposure_time=1.0
+            )
         elif self.cfg.used_image_blurring_block == "GT":
             if gt_sharp is not None:
-                outputs["blur_image"] = motion_blur(gt_sharp, depth, motion)
+                outputs["blur_image"] = motion_blur(
+                    gt_sharp, depth, motion, exposure_time=1.0
+                )
 
         return outputs
