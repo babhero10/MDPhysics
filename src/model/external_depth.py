@@ -48,211 +48,137 @@ class DepthAnything3Lite(nn.Module, PyTorchModelHubMixin):
         else:
             raise ValueError(f"Could not resolve model config for {model_name}")
 
-        def forward(self, x, *args, **kwargs):
+    def forward(self, x, *args, **kwargs):
+        # Forward directly to the underlying model
+        out = self.model(x, *args, **kwargs)
+        
+        # Convert addict.Dict to regular dict to prevent torchinfo recursion
+        # torchinfo tries to access .tensors, which addict creates dynamically, causing infinite loop
+        if hasattr(out, "to_dict"):
+            return out.to_dict()
+        if isinstance(out, dict):
+            return dict(out)
+        return out
 
-            # Forward directly to the underlying model
 
-            out = self.model(x, *args, **kwargs)
+class ExternalDepthModel(nn.Module):
+    """
+    Wrapper for official Depth Anything V3 API (Lite version).
+    """
 
-            # Convert addict.Dict to regular dict to prevent torchinfo recursion
+    def __init__(
+        self,
+        checkpoint: str = "depth-anything/da3mono-large",
+        freeze_backbone: bool = True,
+        fine_tune_head: bool = False,
+        **kwargs,  # Ignore obsolete params like default_focal_length
+    ):
+        super().__init__()
+        self.checkpoint = checkpoint
 
-            # torchinfo tries to access .tensors, which addict creates dynamically, causing infinite loop
+        print(f"Loading official Depth Anything V3 (Lite): {checkpoint}...")
+        # Use our Lite wrapper
+        self.model = DepthAnything3Lite.from_pretrained(checkpoint)
 
-            if hasattr(out, "to_dict"):
+        if freeze_backbone:
+            self.freeze_parameters(fine_tune_head)
 
-                return out.to_dict()
-
-            if isinstance(out, dict):
-
-                return dict(out)
-
-            return out
-
-    class ExternalDepthModel(nn.Module):
+    def freeze_parameters(self, fine_tune_head: bool):
         """
-
-        Wrapper for official Depth Anything V3 API (Lite version).
-
+        Freezes parameters. If fine_tune_head is True, unfreezes the head.
         """
+        for param in self.model.parameters():
+            param.requires_grad = False
 
-        def __init__(
-            self,
-            checkpoint: str = "depth-anything/da3mono-large",
-            freeze_backbone: bool = True,
-            fine_tune_head: bool = False,
-            **kwargs,  # Ignore obsolete params like default_focal_length
-        ):
+        if fine_tune_head:
+            # Unfreeze the Dual-DPT head
+            head_found = False
+            for name, module in self.model.named_modules():
+                if "head" in name.lower():
+                    print(f"Unfreezing DA3 head: {name}")
+                    for param in module.parameters():
+                        param.requires_grad = True
+                    head_found = True
 
-            super().__init__()
+            if not head_found:
+                print(
+                    "Warning: Could not identify DA3 head. Model remains fully frozen."
+                )
 
-            self.checkpoint = checkpoint
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """
+        Forward pass for Depth Anything V3.
+        Auto-pads input to multiple of 14 and crops output.
 
-            print(f"Loading official Depth Anything V3 (Lite): {checkpoint}...")
+        Args:
+            x: Input image (B, 3, H, W).
+               Assumed [0, 1] range. DA3 usually handles internal normalization.
 
-            # Use our Lite wrapper
+        Returns:
+            Dict with 'depth', 'intrinsics', 'extrinsics'.
+        """
+        B, C, H, W = x.shape
 
-            self.model = DepthAnything3Lite.from_pretrained(checkpoint)
+        # 1. Pad to multiple of 14 (DA3 patch size)
+        patch_size = 14
+        pad_h = (patch_size - H % patch_size) % patch_size
+        pad_w = (patch_size - W % patch_size) % patch_size
 
-            if freeze_backbone:
+        x_padded = x
+        if pad_h > 0 or pad_w > 0:
+            # Pad right and bottom
+            x_padded = F.pad(x, (0, pad_w, 0, pad_h), mode="constant", value=0)
 
-                self.freeze_parameters(fine_tune_head)
+        # DA3 expects (B, N, 3, H, W) where N is number of views.
+        # We treat each image in the batch as a single view (N=1).
+        x_view = x_padded.unsqueeze(1)
 
-        def freeze_parameters(self, fine_tune_head: bool):
-            """
+        # Call the model directly
+        # prediction is now a standard dict, safe for torchinfo
+        prediction = self.model(x_view)
 
-            Freezes parameters. If fine_tune_head is True, unfreezes the head.
+        results = {}
 
-            """
-
-            for param in self.model.parameters():
-
-                param.requires_grad = False
-
-            if fine_tune_head:
-
-                # Unfreeze the Dual-DPT head
-
-                head_found = False
-
-                for name, module in self.model.named_modules():
-
-                    if "head" in name.lower():
-
-                        print(f"Unfreezing DA3 head: {name}")
-
-                        for param in module.parameters():
-
-                            param.requires_grad = True
-
-                        head_found = True
-
-                if not head_found:
-
-                    print(
-                        "Warning: Could not identify DA3 head. Model remains fully frozen."
-                    )
-
-        def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-            """
-
-            Forward pass for Depth Anything V3.
-
-            Auto-pads input to multiple of 14 and crops output.
-
-
-
-            Args:
-
-                x: Input image (B, 3, H, W).
-
-                   Assumed [0, 1] range. DA3 usually handles internal normalization.
-
-
-
-            Returns:
-
-                Dict with 'depth', 'intrinsics', 'extrinsics'.
-
-            """
-
-            B, C, H, W = x.shape
-
-            # 1. Pad to multiple of 14 (DA3 patch size)
-
-            patch_size = 14
-
-            pad_h = (patch_size - H % patch_size) % patch_size
-
-            pad_w = (patch_size - W % patch_size) % patch_size
-
-            x_padded = x
-
+        # Helper to crop back
+        def unpad(tensor):
+            # tensor is [B, ..., H_pad, W_pad]
             if pad_h > 0 or pad_w > 0:
+                return tensor[..., :H, :W]
+            return tensor
 
-                # Pad right and bottom
+        # Access outputs from prediction dict
+        # prediction['depth']: [B, N, H, W] -> [B, 1, H, W]
 
-                x_padded = F.pad(x, (0, pad_w, 0, pad_h), mode="constant", value=0)
+        # Extract depth
+        if "depth" in prediction:
+            depth = prediction["depth"]
+            if (
+                depth.dim() == 3
+            ):  # Handle case if it returns [N, H, W] for single sample
+                depth = depth.unsqueeze(1)
+            # If it's [B, N, H, W], we take N=1 logic if needed, but keeping shape is safer
 
-            # DA3 expects (B, N, 3, H, W) where N is number of views.
+            # Crop depth back to original size
+            results["depth"] = unpad(depth)
 
-            # We treat each image in the batch as a single view (N=1).
+        # Confidence maps
+        if "depth_conf" in prediction:
+            results["conf"] = unpad(prediction["depth_conf"])
+        elif "conf" in prediction:
+            results["conf"] = unpad(prediction["conf"])
 
-            x_view = x_padded.unsqueeze(1)
+        # Extrinsics [B, N, 3, 4] - No spatial dimensions, no unpad needed
+        if "extrinsics" in prediction:
+            results["extrinsics"] = prediction["extrinsics"]
 
-            # Call the model directly
+        # Intrinsics [B, N, 3, 3]
+        if "intrinsics" in prediction:
+            intrinsics = prediction["intrinsics"]
+            # If present, we take the intrinsics for the single view
+            # Standard motion_blur expects (B, 3, 3)
+            if intrinsics is not None and intrinsics.dim() == 4:
+                results["intrinsics"] = intrinsics[:, 0, :, :]
+            else:
+                results["intrinsics"] = intrinsics
 
-            # prediction is now a standard dict, safe for torchinfo
-
-            prediction = self.model(x_view)
-
-            results = {}
-
-            # Helper to crop back
-
-            def unpad(tensor):
-
-                # tensor is [B, ..., H_pad, W_pad]
-
-                if pad_h > 0 or pad_w > 0:
-
-                    return tensor[..., :H, :W]
-
-                return tensor
-
-            # Access outputs from prediction dict
-
-            # prediction['depth']: [B, N, H, W] -> [B, 1, H, W]
-
-            # Extract depth
-
-            if "depth" in prediction:
-
-                depth = prediction["depth"]
-
-                if (
-                    depth.dim() == 3
-                ):  # Handle case if it returns [N, H, W] for single sample
-
-                    depth = depth.unsqueeze(1)
-
-                # If it's [B, N, H, W], we take N=1 logic if needed, but keeping shape is safer
-
-                # Crop depth back to original size
-
-                results["depth"] = unpad(depth)
-
-            # Confidence maps
-
-            if "depth_conf" in prediction:
-
-                results["conf"] = unpad(prediction["depth_conf"])
-
-            elif "conf" in prediction:
-
-                results["conf"] = unpad(prediction["conf"])
-
-            # Extrinsics [B, N, 3, 4] - No spatial dimensions, no unpad needed
-
-            if "extrinsics" in prediction:
-
-                results["extrinsics"] = prediction["extrinsics"]
-
-            # Intrinsics [B, N, 3, 3]
-
-            if "intrinsics" in prediction:
-
-                intrinsics = prediction["intrinsics"]
-
-                # If present, we take the intrinsics for the single view
-
-                # Standard motion_blur expects (B, 3, 3)
-
-                if intrinsics is not None and intrinsics.dim() == 4:
-
-                    results["intrinsics"] = intrinsics[:, 0, :, :]
-
-                else:
-
-                    results["intrinsics"] = intrinsics
-
-            return results
+        return results
