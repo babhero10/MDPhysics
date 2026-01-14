@@ -1,3 +1,4 @@
+import sys
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from dataset.Dataset import BlurDataset
@@ -16,6 +17,8 @@ from utils.losses import build_criterion
 from utils.logger import Logger
 from utils.visuals import log_visualizations
 from torchinfo import summary
+
+sys.setrecursionlimit(10000)  # Increase recursion depth for torchinfo on deep models
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
@@ -70,21 +73,24 @@ def main(cfg: DictConfig):
     model = build_model(cfg, device)
 
     # Get summary as string
-    model_summary = summary(
-        model,
-        input_size=(
-            cfg.train.batch_size,
-            3,
-            cfg.dataset.img_size[0],
-            cfg.dataset.img_size[1],
-        ),
-        depth=4,
-        col_names=["input_size", "output_size", "num_params", "trainable"],
-    )
+    try:
+        model_summary = summary(
+            model,
+            input_size=(
+                cfg.train.batch_size,
+                3,
+                cfg.dataset.img_size[0],
+                cfg.dataset.img_size[1],
+            ),
+            depth=4,
+            col_names=["input_size", "output_size", "num_params", "trainable"],
+        )
+        logger.info(str(model_summary))
+    except Exception as e:
+        logger.warning(f"Failed to generate model summary: {e}")
 
     logger.info("Model initalized successfully!")
     logger.info(f"Device used: {device}")
-    logger.info(str(model_summary))
 
     criterion = build_criterion(cfg.train.criterion)
 
