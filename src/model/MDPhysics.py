@@ -225,38 +225,18 @@ class mdt(nn.Module):
             B = inp_img.shape[0]
             dist = torch.zeros((B, 4), device=inp_img.device)
 
-        # Pad Input to match the architecture initialized in __init__
+        # Pad Input to match the tiling strategy
         B, C, H, W = inp_img.shape
 
-        # Calculate padding to reach the initialized padded size
-        # Note: This assumes input H, W are <= initialized sizes.
-        # If input is larger (e.g. testing), we should dynamically pad to nearest multiple
-        # but the window sizes in TransformerBlock are fixed at init.
-        # This is a limitation of this specific WindowAttention implementation (it bakes in pos embeddings).
-        # For now, we pad to the size calculated at init (optimized for 360x640).
+        # Height: Needs to be divisible by total_stride (16) because window height is 1.
+        # Width: Needs to be divisible by self.padded_W (256) because window width is global (spanning init width).
+        # This effectively tiles the image horizontally.
 
-        # However, to be robust to varying test sizes, we should probably check if H/W match config.
-        # But let's stick to the training fix first.
+        stride_h = 16
+        stride_w = self.padded_W  # 256
 
-        pad_h = self.padded_H - H
-        pad_w = self.padded_W - W
-
-        # If padding is negative (input larger than init), this might fail.
-        # But we assume config matches data.
-        if pad_h < 0 or pad_w < 0:
-            # Fallback for larger images: pad to nearest stride, but this will crash WindowAttention
-            # because it expects fixed window size.
-            # The only way to support variable resolution is if WindowAttention supported it.
-            # Current WindowAttention has learnable params of fixed size (a_p, b_p).
-            # So we MUST pad/crop to exactly self.padded_H/W or integer multiples of windows?
-            # Actually, WindowAttention uses 'window_size' which is fixed.
-            # If the feature map is larger, window_partition just makes MORE windows.
-            # The problem is 'window_size' itself.
-            # Level 3 window width = (padded_W // patch_size) // 4.
-            # This is a single huge window covering the whole width.
-            # If input width changes, this window size is wrong.
-            # So, for THIS specific architecture (Stripe Attention), input size is effectively fixed/locked at init.
-            pass
+        pad_h = (stride_h - H % stride_h) % stride_h
+        pad_w = (stride_w - W % stride_w) % stride_w
 
         if pad_h > 0 or pad_w > 0:
             inp_img = F.pad(inp_img, (0, pad_w, 0, pad_h), mode="reflect")
