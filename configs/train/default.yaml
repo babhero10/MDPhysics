@@ -1,8 +1,8 @@
 lr: 1e-3
 weight_decay: 1e-3
 epochs: 100
-batch_size: 16
-batch_size_val: 8
+batch_size: 4
+batch_size_val: 1
 
 criterion:
   _target_: utils.losses.LossContainer

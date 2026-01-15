@@ -1,6 +1,6 @@
 src_root: ${hydra:runtime.cwd}/data/GoPro/raw
 dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
-img_size: [360, 640]
+img_size: [256, 256]
 num_workers: 4
 
 augmentations:

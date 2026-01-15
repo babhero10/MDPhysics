@@ -30,24 +30,30 @@ class mdt(nn.Module):
         norm_layer = nn.LayerNorm
 
         # 1. Determine Padded Image Size at Init
-        # We must align the architecture to the padded size, not the raw input size.
-        # Both H and W must be divisible by patch_size * 4 (for 2 levels of 2x downsampling).
-        stride = patch_size * 4
+        # The DPTEmbedding outputs features at H/4, W/4 resolution (stride 4).
+        # The U-Net structure downsamples this further by 4 (Level 2: /2, Level 3: /4).
+        # So the total downsampling factor relative to input is 4 * 4 = 16.
+        # Both H and W must be divisible by 16.
+
+        feature_stride = 4  # DPT outputs H/4
+        unet_downsample = 4  # U-Net goes down to 1/4 of feature map
+        total_stride = feature_stride * unet_downsample  # 16
 
         if isinstance(img_size, (list, tuple, ListConfig)):
             h, w = int(img_size[0]), int(img_size[1])
         else:
             h, w = int(img_size), int(img_size)
 
-        pad_h = (stride - h % stride) % stride
-        pad_w = (stride - w % stride) % stride
+        pad_h = (total_stride - h % total_stride) % total_stride
+        pad_w = (total_stride - w % total_stride) % total_stride
 
         self.padded_H = h + pad_h
         self.padded_W = w + pad_w
 
-        # 2. Calculate Cuts based on PADDED size
-        radius_cuts = self.padded_H // patch_size
-        azimuth_cuts = self.padded_W // patch_size
+        # 2. Calculate Cuts based on PADDED feature map size
+        # The transformer operates on the feature map (H/4, W/4).
+        radius_cuts = self.padded_H // feature_stride
+        azimuth_cuts = self.padded_W // feature_stride
         res = max(radius_cuts, azimuth_cuts)
 
         n_radius = 1
