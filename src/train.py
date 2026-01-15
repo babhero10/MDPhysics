@@ -16,9 +16,6 @@ from utils.training import (
 from utils.losses import build_criterion
 from utils.logger import Logger
 from utils.visuals import log_visualizations
-from torchinfo import summary
-
-sys.setrecursionlimit(10000)  # Increase recursion depth for torchinfo on deep models
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")

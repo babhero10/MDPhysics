@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from timm.layers import trunc_normal_
+import math
 
 from .archs.dpt_arch import DPTEmbedding
 from .archs.mdt_arch import TransformerBlock, Downsample, Upsample, PatchEmbed, Fuse
@@ -28,8 +30,8 @@ class mdt(nn.Module):
         norm_layer = nn.LayerNorm
 
         if isinstance(img_size, (list, tuple, ListConfig)):
-            radius_cuts = int(img_size[0])
-            azimuth_cuts = int(img_size[1])
+            radius_cuts = math.ceil(img_size[0] / patch_size)
+            azimuth_cuts = math.ceil(img_size[1] / patch_size)
             res = max(radius_cuts, azimuth_cuts)
         else:
             res = int(img_size)
@@ -213,6 +215,23 @@ class mdt(nn.Module):
             B = inp_img.shape[0]
             dist = torch.zeros((B, 4), device=inp_img.device)
 
+        # Pad Input
+        B, C, H, W = inp_img.shape
+        # Calculate target dimensions based on cuts and patch_size
+        # patch_embed0 (DPTEmbedding) expects patch_size=14
+        # self.patch_embed (Polar) was init with radius_cuts/azimuth_cuts derived from patch_size
+
+        # We need to know the patch_size used in init.
+        # Since we don't store it explicitly as 'patch_size', we can infer or store it.
+        # But 'self.patch_embed0.patch_size' exists.
+        patch_size = self.patch_embed0.patch_size
+
+        pad_h = (patch_size - H % patch_size) % patch_size
+        pad_w = (patch_size - W % patch_size) % patch_size
+
+        if pad_h > 0 or pad_w > 0:
+            inp_img = F.pad(inp_img, (0, pad_w, 0, pad_h), mode="reflect")
+
         inp_enc_level1, D_s, theta_max = self.patch_embed(inp_img, dist)
         inp_enc_level1 = self.patch_embed0(inp_img)
 
@@ -253,6 +272,10 @@ class mdt(nn.Module):
         out_dec_level1 = self.refinement(inp_dec1)
 
         out_dec_level1 = self.output(out_dec_level1[0]) + inp_img
+
+        # Crop Output
+        if pad_h > 0 or pad_w > 0:
+            out_dec_level1 = out_dec_level1[..., :H, :W]
 
         return [out_dec_level1]
 
