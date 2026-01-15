@@ -138,39 +138,34 @@ class ReassembleBlock(nn.Module):
         tokens: torch.Tensor,
         patch_size: int,
         image_size: tuple[int, int] = None,
+        target_size: tuple[int, int] = None,
     ) -> torch.Tensor:
         """
         Args:
-            tokens: (B, N+1, C) where N is number of patches, +1 for CLS token
-            patch_size: Size of each patch in the original image
+            tokens: (B, T, C)
+            patch_size: ViT patch size
             image_size: Tuple of (H, W) of the original image
+            target_size: Explicit resolution to upsample to
         """
         B, T, C = tokens.shape
 
-        # Calculate grid size first to know how many tokens are spatial patches
         if image_size is not None:
             H_img, W_img = image_size
             H = H_img // patch_size
             W = W_img // patch_size
         else:
-            # Fallback estimation if image_size not provided (assumes no registers)
             N_spatial = T - 1
             H = W = int(N_spatial**0.5)
 
         N_spatial = H * W
+        cls_token = tokens[:, 0:1, :]
+        patch_tokens = tokens[:, -N_spatial:, :]
 
-        # Separate CLS token and patch tokens
-        # We assume CLS is at index 0, and patches are the LAST N_spatial tokens
-        cls_token = tokens[:, 0:1, :]  # (B, 1, C)
-        patch_tokens = tokens[:, -N_spatial:, :]  # (B, N_spatial, C)
-
-        # Apply read operation
         if self.read_operation == "ignore":
             tokens_out = patch_tokens
         elif self.read_operation == "add":
             tokens_out = patch_tokens + cls_token
         elif self.read_operation == "project":
-            # Concatenate cls_token to each patch token and project
             cls_expanded = cls_token.expand(-1, patch_tokens.shape[1], -1)
             tokens_cat = torch.cat([patch_tokens, cls_expanded], dim=-1)
             tokens_out = self.read_proj(tokens_cat)
@@ -178,12 +173,14 @@ class ReassembleBlock(nn.Module):
             raise ValueError(f"Unknown read operation: {self.read_operation}")
 
         tokens_2d = tokens_out.transpose(1, 2).reshape(B, tokens_out.shape[-1], H, W)
-
-        # Project
         out = self.proj(tokens_2d)
 
-        # Resample
-        if self.scale_factor != 1.0:
+        # Resample to exact target size if provided
+        if target_size is not None:
+            out = F.interpolate(
+                out, size=target_size, mode="bilinear", align_corners=True
+            )
+        elif self.scale_factor != 1.0:
             out = F.interpolate(
                 out, scale_factor=self.scale_factor, mode="bilinear", align_corners=True
             )
@@ -208,13 +205,12 @@ class DPTEmbedding(nn.Module):
         self.backbone = AutoModel.from_pretrained(
             self.backbone_name, trust_remote_code=True
         )
-        self.backbone_dim = self.backbone.config.hidden_size  # 384
+        self.backbone_dim = self.backbone.config.hidden_size
 
-        # Freeze backbone
         for param in self.backbone.parameters():
             param.requires_grad = False
 
-        # 2. Reassemble Layers (Shared for both paths)
+        # 2. Reassemble Layers
         self.feature_layers = [2, 5, 8, 11]
         self.target_scales = [4, 8, 16, 32]
         self.reassemble_blocks = nn.ModuleList()
@@ -229,79 +225,63 @@ class DPTEmbedding(nn.Module):
                 )
             )
 
-        # 3. Fusion Path - Translation
+        # 3. Fusion Paths
         self.translation_fusion_blocks = nn.ModuleList()
-        for i in range(len(self.target_scales)):
-            skip_ch = embed_dim if i > 0 else 0
-            self.translation_fusion_blocks.append(
-                FeatureFusionBlock(
-                    features=embed_dim,
-                    skip_channels=skip_ch,
-                    use_bn=False,
-                    expand=False,
-                    upsample=(i != 0),
-                )
-            )
-
-        self.translation_up = nn.Sequential(
-            nn.Conv2d(embed_dim, embed_dim, 3, padding=1),
-            nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True),
-        )
-
-        # 4. Fusion Path - Rotation
         self.rotation_fusion_blocks = nn.ModuleList()
         for i in range(len(self.target_scales)):
             skip_ch = embed_dim if i > 0 else 0
+            self.translation_fusion_blocks.append(
+                FeatureFusionBlock(embed_dim, skip_ch, False, upsample=(i != 0))
+            )
             self.rotation_fusion_blocks.append(
-                FeatureFusionBlock(
-                    features=embed_dim,
-                    skip_channels=skip_ch,
-                    use_bn=False,
-                    expand=False,
-                    upsample=(i != 0),
-                )
+                FeatureFusionBlock(embed_dim, skip_ch, False, upsample=(i != 0))
             )
 
-        self.rotation_up = nn.Sequential(
-            nn.Conv2d(embed_dim, embed_dim, 3, padding=1),
-            nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True),
-        )
+        self.translation_up = nn.Conv2d(embed_dim, embed_dim, 3, padding=1)
+        self.rotation_up = nn.Conv2d(embed_dim, embed_dim, 3, padding=1)
 
     def forward(self, x):
         B, C, H, W = x.shape
 
-        # Pad for ViT
         pad_h = (self.patch_size - H % self.patch_size) % self.patch_size
         pad_w = (self.patch_size - W % self.patch_size) % self.patch_size
-        x_padded = (
-            F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
-            if (pad_h > 0 or pad_w > 0)
-            else x
-        )
+        x_padded = F.pad(x, (0, pad_w, 0, pad_h), mode="reflect")
 
-        # Backbone & Reassemble
         outputs = self.backbone(x_padded, output_hidden_states=True, return_dict=True)
         features = [outputs.hidden_states[i] for i in self.feature_layers]
-        reassembled = [
-            block(f, self.patch_size, image_size=x_padded.shape[2:])
-            for f, block in zip(features, self.reassemble_blocks)
+
+        # Calculate exact target resolutions for each level to avoid rounding errors
+        # reassembled[0] is scale 4, [1] is scale 8, etc.
+        targets = [
+            (x_padded.shape[2] // scale, x_padded.shape[3] // scale)
+            for scale in self.target_scales
         ]
 
-        # Translation Path
-        t_out = reassembled[-1]
-        for i in range(len(reassembled) - 1, 0, -1):
-            t_out = self.translation_fusion_blocks[i](t_out, reassembled[i - 1])
-        t_out = self.translation_up(self.translation_fusion_blocks[0](t_out))
+        reassembled = [
+            block(f, self.patch_size, image_size=x_padded.shape[2:], target_size=t)
+            for f, block, t in zip(features, self.reassemble_blocks, targets)
+        ]
 
-        # Rotation Path
+        # Fusion
+        t_out = reassembled[-1]
         r_out = reassembled[-1]
         for i in range(len(reassembled) - 1, 0, -1):
+            t_out = self.translation_fusion_blocks[i](t_out, reassembled[i - 1])
             r_out = self.rotation_fusion_blocks[i](r_out, reassembled[i - 1])
-        r_out = self.rotation_up(self.rotation_fusion_blocks[0](r_out))
 
-        # Sum & Crop
+        # Final upsample to match input x (not padded size)
+        t_out = F.interpolate(
+            self.translation_up(self.translation_fusion_blocks[0](t_out)),
+            size=(H, W),
+            mode="bilinear",
+            align_corners=True,
+        )
+        r_out = F.interpolate(
+            self.rotation_up(self.rotation_fusion_blocks[0](r_out)),
+            size=(H, W),
+            mode="bilinear",
+            align_corners=True,
+        )
+
         out = t_out + r_out
-        if pad_h > 0 or pad_w > 0:
-            out = out[..., :H, :W]
-
         return out

@@ -27,37 +27,49 @@ class mdt(nn.Module):
         super(mdt, self).__init__()
 
         distortion_model = "polynomial"
+
         norm_layer = nn.LayerNorm
 
         # 1. Determine Padded Image Size at Init
-        # The DPTEmbedding outputs features at H/4, W/4 resolution (stride 4).
-        # The U-Net structure downsamples this further by 4 (Level 2: /2, Level 3: /4).
-        # So the total downsampling factor relative to input is 4 * 4 = 16.
-        # Both H and W must be divisible by 16.
 
-        feature_stride = 4  # DPT outputs H/4
-        unet_downsample = 4  # U-Net goes down to 1/4 of feature map
-        total_stride = feature_stride * unet_downsample  # 16
+        # DPT now returns full resolution (stride 1).
+
+        # U-Net structure downsamples twice (factor of 4 total).
+
+        # We use a padding multiple of 16 to be safe for any resolution.
+
+        feature_stride = 1  # DPT outputs H, W
+
+        total_stride = 16  # Padding multiple for U-Net
 
         if isinstance(img_size, (list, tuple, ListConfig)):
+
             h, w = int(img_size[0]), int(img_size[1])
+
         else:
+
             h, w = int(img_size), int(img_size)
 
         pad_h = (total_stride - h % total_stride) % total_stride
+
         pad_w = (total_stride - w % total_stride) % total_stride
 
         self.padded_H = h + pad_h
+
         self.padded_W = w + pad_w
 
-        # 2. Calculate Cuts based on PADDED feature map size
-        # The transformer operates on the feature map (H/4, W/4).
+        # 2. Calculate Cuts based on full resolution feature map
+
         radius_cuts = self.padded_H // feature_stride
+
         azimuth_cuts = self.padded_W // feature_stride
+
         res = max(radius_cuts, azimuth_cuts)
 
         n_radius = 1
+
         n_azimuth = 1
+
         cartesian = (
             torch.cartesian_prod(torch.linspace(-1, 1, res), torch.linspace(1, -1, res))
             .reshape(res, res, 2)
@@ -65,7 +77,9 @@ class mdt(nn.Module):
             .transpose(1, 0)
             .transpose(1, 2)
         )
+
         radius = cartesian.norm(dim=0)
+
         theta = torch.atan2(cartesian[1], cartesian[0])
 
         self.patch_embed0 = DPTEmbedding(
@@ -225,18 +239,12 @@ class mdt(nn.Module):
             B = inp_img.shape[0]
             dist = torch.zeros((B, 4), device=inp_img.device)
 
-        # Pad Input to match the tiling strategy
+        # Pad Input to satisfy U-Net downsampling (2 levels of 2x = 4, but 16 is safer)
         B, C, H, W = inp_img.shape
+        stride = 16
 
-        # Height: Needs to be divisible by total_stride (16) because window height is 1.
-        # Width: Needs to be divisible by self.padded_W (256) because window width is global (spanning init width).
-        # This effectively tiles the image horizontally.
-
-        stride_h = 16
-        stride_w = self.padded_W  # 256
-
-        pad_h = (stride_h - H % stride_h) % stride_h
-        pad_w = (stride_w - W % stride_w) % stride_w
+        pad_h = (stride - H % stride) % stride
+        pad_w = (stride - W % stride) % stride
 
         if pad_h > 0 or pad_w > 0:
             inp_img = F.pad(inp_img, (0, pad_w, 0, pad_h), mode="reflect")
