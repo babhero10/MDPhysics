@@ -117,17 +117,16 @@ def train_one_epoch(
     device,
     scaler,
     metrics=None,
-    metrics_blur=None,
 ):
     model.train()
 
     for metric in (metrics or {}).values():
         metric.reset()
-    for metric in (metrics_blur or {}).values():
-        metric.reset()
 
     running_loss_dict = {}
     total_samples = 0
+
+    device_type = "cuda" if device.type == "cuda" else "cpu"
 
     for batch in tqdm(train_loader, desc="Training", leave=False):
         blur = batch["blur"].to(device)
@@ -137,10 +136,10 @@ def train_one_epoch(
         optimizer.zero_grad()
 
         # Construct targets dictionary
-        targets = {"blur_image": blur, "sharp_image": sharp}
+        targets = {"sharp_image": sharp}
 
-        with torch.amp.autocast("cuda"):  # FP16 forward
-            pred = model(blur, gt_sharp=sharp)
+        with torch.amp.autocast(device_type):  # Dynamic FP16 forward
+            pred = model(blur)
             loss, loss_dict = criterion(pred, targets)
 
         # scale gradients
@@ -159,16 +158,9 @@ def train_one_epoch(
             for metric in metrics.values():
                 metric.update(pred["sharp_image"].detach(), sharp)
 
-        if metrics_blur and "blur_image" in pred:
-            for metric in metrics_blur.values():
-                metric.update(pred["blur_image"].detach(), blur)
-
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()
     }
-
-    for name, metric in (metrics_blur or {}).items():
-        results[f"{name}_blur"] = metric.compute().item()
 
     avg_loss_dict = {k: v / total_samples for k, v in running_loss_dict.items()}
 
@@ -176,25 +168,25 @@ def train_one_epoch(
 
 
 @torch.no_grad()
-def validate(model, val_loader, criterion, device, metrics=None, metrics_blur=None):
+def validate(model, val_loader, criterion, device, metrics=None):
     model.eval()
     for metric in (metrics or {}).values():
-        metric.reset()
-    for metric in (metrics_blur or {}).values():
         metric.reset()
 
     running_loss_dict = {}
     total_samples = 0
+
+    device_type = "cuda" if device.type == "cuda" else "cpu"
 
     for batch in tqdm(val_loader, desc="Validating", leave=False):
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
         batch_size = blur.size(0)
 
-        targets = {"blur_image": blur, "sharp_image": sharp}
+        targets = {"sharp_image": sharp}
 
-        with torch.amp.autocast("cuda"):
-            pred = model(blur, gt_sharp=sharp)
+        with torch.amp.autocast(device_type):
+            pred = model(blur)
             loss, loss_dict = criterion(pred, targets)
 
         # Accumulate losses (weighted by batch size)
@@ -208,16 +200,9 @@ def validate(model, val_loader, criterion, device, metrics=None, metrics_blur=No
             for metric in metrics.values():
                 metric.update(pred["sharp_image"].detach(), sharp)
 
-        if metrics_blur and "blur_image" in pred:
-            for metric in metrics_blur.values():
-                metric.update(pred["blur_image"].detach(), blur)
-
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()
     }
-
-    for name, metric in (metrics_blur or {}).items():
-        results[f"{name}_blur"] = metric.compute().item()
 
     avg_loss_dict = {k: v / total_samples for k, v in running_loss_dict.items()}
 

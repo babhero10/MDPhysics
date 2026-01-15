@@ -45,6 +45,9 @@ class LossContainer(nn.Module):
         loss_dict = {}
 
         for name, loss_fn in self.losses.items():
+            if name not in preds:
+                continue
+
             loss_val = loss_fn(preds[name], targets[name])
             weighted = self.weights[name] * loss_val
 

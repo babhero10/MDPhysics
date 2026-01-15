@@ -4,12 +4,12 @@ defaults:
   - model: mdphysics
   - metrics: default
   - logger: default
-  - train: stage1
+  - train: default
 
 device: "cuda:0"
 seed: 42
 
 hydra:
   run:
-    dir: outputs/${model.name}/stage_${train.stage}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${model.name}/${now:%Y-%m-%d_%H-%M-%S}
 

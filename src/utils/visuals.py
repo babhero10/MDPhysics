@@ -96,13 +96,6 @@ class DPTVisualizer:
         # Prepare visualizations
         vis_items = [("Input", image)]
 
-        if "blur_image" in predictions:
-            blur = predictions["blur_image"]
-            if blur.ndim == 3:
-                blur = blur.transpose(1, 2, 0)
-            blur = (blur * 255).astype(np.uint8)
-            vis_items.append(("Blur Image", blur))
-
         if ground_truth is not None:
             vis_items.append(("Ground Truth", ground_truth))
 
@@ -188,7 +181,7 @@ def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, dev
         blur_imgs = blur_imgs.to(device)
         sharp_imgs = sharp_imgs.to(device)
 
-        outputs = model(blur_imgs, gt_sharp=sharp_imgs)
+        outputs = model(blur_imgs)
 
         # Loop over each image in the batch
         for i in range(blur_imgs.size(0)):
@@ -218,18 +211,6 @@ def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, dev
                         target_sharp_tensor.unsqueeze(0),
                     )
                     img_metrics[name] = metric.compute().item()
-
-            if "blur_image" in outputs:
-                pred_blur_tensor = outputs["blur_image"][i]
-                target_blur_tensor = blur_imgs[i]
-
-                for name, metric in metrics.items():
-                    metric.reset()
-                    metric.update(
-                        pred_blur_tensor.unsqueeze(0),
-                        target_blur_tensor.unsqueeze(0),
-                    )
-                    img_metrics[f"{name}_blur"] = metric.compute().item()
 
             writer.add_image(
                 f"visuals/{i}",

@@ -72,23 +72,6 @@ def main(cfg: DictConfig):
     # Instantiate model from 'arch' sub-config
     model = build_model(cfg, device)
 
-    # Get summary as string
-    try:
-        model_summary = summary(
-            model,
-            input_size=(
-                cfg.train.batch_size,
-                3,
-                cfg.dataset.img_size[0],
-                cfg.dataset.img_size[1],
-            ),
-            depth=4,
-            col_names=["input_size", "output_size", "num_params", "trainable"],
-        )
-        logger.info(str(model_summary))
-    except Exception as e:
-        logger.warning(f"Failed to generate model summary: {e}")
-
     logger.info("Model initalized successfully!")
     logger.info(f"Device used: {device}")
 
@@ -100,16 +83,6 @@ def main(cfg: DictConfig):
 
     # metrics
     metrics = build_metrics(cfg.metrics, device)
-    metrics_blur = None
-
-    # Check for blur metrics requirement
-    model_cfg = getattr(model, "cfg", None)
-    if model_cfg:
-        use_blurring = getattr(model_cfg, "use_blurring_block", False)
-        blur_type = getattr(model_cfg, "used_image_blurring_block", "")
-        if use_blurring and blur_type == "GT":
-            metrics_blur = build_metrics(cfg.metrics, device)
-            logger.info("Initialized metrics for Blur Image (Stage 1 monitoring).")
 
     checkpoint_mgr = CheckpointManager(
         save_dir=cfg.train.checkpoint.dir,
@@ -119,7 +92,8 @@ def main(cfg: DictConfig):
     )
 
     # Optimization
-    scaler = torch.amp.GradScaler("cuda")
+    scaler_device = "cuda" if "cuda" in cfg.device else "cpu"
+    scaler = torch.amp.GradScaler(scaler_device)
 
     logger.info("Training Started!")
 
@@ -133,12 +107,11 @@ def main(cfg: DictConfig):
             device,
             scaler,
             metrics,
-            metrics_blur,
         )
 
         logger.info(f"Epoch {epoch + 1} | Validating...")
         val_losses, val_metrics = validate(
-            model, val_loader, criterion, device, metrics, metrics_blur
+            model, val_loader, criterion, device, metrics
         )
 
         # Logging to TensorBoard
