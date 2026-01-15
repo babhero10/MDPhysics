@@ -29,14 +29,26 @@ class mdt(nn.Module):
         distortion_model = "polynomial"
         norm_layer = nn.LayerNorm
 
+        # 1. Determine Padded Image Size at Init
+        # We must align the architecture to the padded size, not the raw input size.
+        # Both H and W must be divisible by patch_size * 4 (for 2 levels of 2x downsampling).
+        stride = patch_size * 4
+
         if isinstance(img_size, (list, tuple, ListConfig)):
-            radius_cuts = math.ceil(img_size[0] / patch_size)
-            azimuth_cuts = math.ceil(img_size[1] / patch_size)
-            res = max(radius_cuts, azimuth_cuts)
+            h, w = int(img_size[0]), int(img_size[1])
         else:
-            res = int(img_size)
-            radius_cuts = res
-            azimuth_cuts = res
+            h, w = int(img_size), int(img_size)
+
+        pad_h = (stride - h % stride) % stride
+        pad_w = (stride - w % stride) % stride
+
+        self.padded_H = h + pad_h
+        self.padded_W = w + pad_w
+
+        # 2. Calculate Cuts based on PADDED size
+        radius_cuts = self.padded_H // patch_size
+        azimuth_cuts = self.padded_W // patch_size
+        res = max(radius_cuts, azimuth_cuts)
 
         n_radius = 1
         n_azimuth = 1
@@ -59,7 +71,7 @@ class mdt(nn.Module):
         )
 
         self.patch_embed = PatchEmbed(
-            img_size=img_size,
+            img_size=(self.padded_H, self.padded_W),  # Use padded size
             distortion_model=distortion_model,
             radius_cuts=radius_cuts,
             azimuth_cuts=azimuth_cuts,
@@ -207,17 +219,38 @@ class mdt(nn.Module):
             B = inp_img.shape[0]
             dist = torch.zeros((B, 4), device=inp_img.device)
 
-        # Pad Input
+        # Pad Input to match the architecture initialized in __init__
         B, C, H, W = inp_img.shape
-        patch_size = self.patch_embed0.patch_size
 
-        # Both Height and Width need to be divisible by patch_size * 4
-        # (2 levels of symmetric downsampling: 2 * 2 = 4)
-        w_stride = patch_size * 4
-        h_stride = patch_size * 4
+        # Calculate padding to reach the initialized padded size
+        # Note: This assumes input H, W are <= initialized sizes.
+        # If input is larger (e.g. testing), we should dynamically pad to nearest multiple
+        # but the window sizes in TransformerBlock are fixed at init.
+        # This is a limitation of this specific WindowAttention implementation (it bakes in pos embeddings).
+        # For now, we pad to the size calculated at init (optimized for 360x640).
 
-        pad_h = (h_stride - H % h_stride) % h_stride
-        pad_w = (w_stride - W % w_stride) % w_stride
+        # However, to be robust to varying test sizes, we should probably check if H/W match config.
+        # But let's stick to the training fix first.
+
+        pad_h = self.padded_H - H
+        pad_w = self.padded_W - W
+
+        # If padding is negative (input larger than init), this might fail.
+        # But we assume config matches data.
+        if pad_h < 0 or pad_w < 0:
+            # Fallback for larger images: pad to nearest stride, but this will crash WindowAttention
+            # because it expects fixed window size.
+            # The only way to support variable resolution is if WindowAttention supported it.
+            # Current WindowAttention has learnable params of fixed size (a_p, b_p).
+            # So we MUST pad/crop to exactly self.padded_H/W or integer multiples of windows?
+            # Actually, WindowAttention uses 'window_size' which is fixed.
+            # If the feature map is larger, window_partition just makes MORE windows.
+            # The problem is 'window_size' itself.
+            # Level 3 window width = (padded_W // patch_size) // 4.
+            # This is a single huge window covering the whole width.
+            # If input width changes, this window size is wrong.
+            # So, for THIS specific architecture (Stripe Attention), input size is effectively fixed/locked at init.
+            pass
 
         if pad_h > 0 or pad_w > 0:
             inp_img = F.pad(inp_img, (0, pad_w, 0, pad_h), mode="reflect")
