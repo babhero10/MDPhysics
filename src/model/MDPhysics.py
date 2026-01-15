@@ -93,13 +93,17 @@ class mdt(nn.Module):
         ]
 
         patches_resolution = self.patch_embed.patches_resolution
-        patches_res_num = 4
+
+        # Resolutions for each level (Symmetric Downsampling)
+        res_level1 = (patches_resolution[0], patches_resolution[1])
+        res_level2 = (patches_resolution[0] // 2, patches_resolution[1] // 2)
+        res_level3 = (patches_resolution[0] // 4, patches_resolution[1] // 4)
 
         # --- Encoder Levels ---
         self.encoder_level1 = self._make_layer(
             dim=dim,
             num_blocks=num_blocks[0],
-            resolution=(patches_resolution[0], patches_resolution[1]),
+            resolution=res_level1,
             dpr_slice=self.dpr[: num_blocks[0]],
             att=False,
         )
@@ -109,10 +113,7 @@ class mdt(nn.Module):
         self.encoder_level2 = self._make_layer(
             dim=int(dim * 2),
             num_blocks=num_blocks[1],
-            resolution=(
-                patches_resolution[0],
-                patches_resolution[1] // patches_res_num,
-            ),
+            resolution=res_level2,
             dpr_slice=self.dpr[num_blocks[0] : num_blocks[0] + num_blocks[1]],
             att=False,
         )
@@ -122,10 +123,7 @@ class mdt(nn.Module):
         self.encoder_level3 = self._make_layer(
             dim=int(dim * 4),
             num_blocks=num_blocks[2],
-            resolution=(
-                patches_resolution[0],
-                patches_resolution[1] // (patches_res_num**2),
-            ),
+            resolution=res_level3,
             dpr_slice=self.dpr[
                 num_blocks[0]
                 + num_blocks[1] : num_blocks[0]
@@ -139,10 +137,7 @@ class mdt(nn.Module):
         self.decoder_level3 = self._make_layer(
             dim=int(dim * 4),
             num_blocks=num_blocks[2],
-            resolution=(
-                patches_resolution[0],
-                patches_resolution[1] // (patches_res_num**2),
-            ),
+            resolution=res_level3,
             dpr_slice=self.dpr[
                 num_blocks[0]
                 + num_blocks[1] : num_blocks[0]
@@ -160,10 +155,7 @@ class mdt(nn.Module):
         self.decoder_level2 = self._make_layer(
             dim=int(dim * 2),
             num_blocks=num_blocks[1],
-            resolution=(
-                patches_resolution[0],
-                patches_resolution[1] // patches_res_num,
-            ),
+            resolution=res_level2,
             dpr_slice=self.dpr[num_blocks[0] : num_blocks[0] + num_blocks[1]],
             att=True,
         )
@@ -173,7 +165,7 @@ class mdt(nn.Module):
         self.decoder_level1 = self._make_layer(
             dim=dim,
             num_blocks=num_blocks[0],
-            resolution=(patches_resolution[0], patches_resolution[1]),
+            resolution=res_level1,
             dpr_slice=self.dpr[: num_blocks[0]],
             att=True,
         )
@@ -181,15 +173,15 @@ class mdt(nn.Module):
         self.refinement = self._make_layer(
             dim=dim,
             num_blocks=num_refinement_blocks,
-            resolution=(patches_resolution[0], patches_resolution[1]),
+            resolution=res_level1,
             dpr_slice=self.dpr[
                 :num_refinement_blocks
             ],  # Uses same slice as Enc1 as per original code
             att=True,
         )
 
-        self.fuse2 = Fuse(dim * 2, 2, patches_resolution, self.patch_size_polar)
-        self.fuse1 = Fuse(dim, 1, patches_resolution, self.patch_size_polar)
+        self.fuse2 = Fuse(dim * 2, res_level2, self.patch_size_polar)
+        self.fuse1 = Fuse(dim, res_level1, self.patch_size_polar)
         self.output = nn.Conv2d(
             int(dim), out_channels, kernel_size=3, stride=1, padding=1, bias=bias
         )
@@ -217,17 +209,15 @@ class mdt(nn.Module):
 
         # Pad Input
         B, C, H, W = inp_img.shape
-        # Calculate target dimensions based on cuts and patch_size
-        # patch_embed0 (DPTEmbedding) expects patch_size=14
-        # self.patch_embed (Polar) was init with radius_cuts/azimuth_cuts derived from patch_size
-
-        # We need to know the patch_size used in init.
-        # Since we don't store it explicitly as 'patch_size', we can infer or store it.
-        # But 'self.patch_embed0.patch_size' exists.
         patch_size = self.patch_embed0.patch_size
 
-        pad_h = (patch_size - H % patch_size) % patch_size
-        pad_w = (patch_size - W % patch_size) % patch_size
+        # Both Height and Width need to be divisible by patch_size * 4
+        # (2 levels of symmetric downsampling: 2 * 2 = 4)
+        w_stride = patch_size * 4
+        h_stride = patch_size * 4
+
+        pad_h = (h_stride - H % h_stride) % h_stride
+        pad_w = (w_stride - W % w_stride) % w_stride
 
         if pad_h > 0 or pad_w > 0:
             inp_img = F.pad(inp_img, (0, pad_w, 0, pad_h), mode="reflect")

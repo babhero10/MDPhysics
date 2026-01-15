@@ -560,16 +560,13 @@ class TransformerBlock(nn.Module):
 
 
 class Fuse(nn.Module):
-    def __init__(self, n_feat, l, patches_resolution, patch_size):
+    def __init__(self, n_feat, resolution, patch_size):
         super(Fuse, self).__init__()
 
         self.n_feat = n_feat
         self.att_channel = TransformerBlock(
             patch_size=patch_size,
-            input_resolution=(
-                patches_resolution[0] // (1**l),
-                patches_resolution[1] // (4**l),
-            ),
+            input_resolution=resolution,
             dim=n_feat * 2,
         )
 
@@ -592,7 +589,7 @@ class Downsample(nn.Module):
         super(Downsample, self).__init__()
 
         self.body = nn.Sequential(
-            nn.Upsample(scale_factor=(1, 0.25), mode="bilinear", align_corners=False),
+            nn.Upsample(scale_factor=0.5, mode="bilinear", align_corners=False),
             nn.Conv2d(n_feat, n_feat * 2, 3, stride=1, padding=1, bias=False),
         )
 
@@ -606,7 +603,7 @@ class Upsample(nn.Module):
         super(Upsample, self).__init__()
 
         self.body = nn.Sequential(
-            nn.Upsample(scale_factor=(1, 4), mode="bilinear", align_corners=False),
+            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
             nn.Conv2d(n_feat, n_feat // 2, 3, stride=1, padding=1, bias=False),
         )
 
