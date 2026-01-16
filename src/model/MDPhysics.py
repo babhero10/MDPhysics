@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.layers import trunc_normal_
-import math
 
 from .archs.dpt_arch import DPTEmbedding
 from .archs.mdt_arch import TransformerBlock, Downsample, Upsample, PatchEmbed, Fuse
@@ -40,7 +39,10 @@ class mdt(nn.Module):
 
         feature_stride = 1  # DPT outputs H, W
 
-        total_stride = 16  # Padding multiple for U-Net
+        # DFFN has patch_size=8 and runs at Level 3 (downscale 4).
+        # Level 3 res must be % 8 == 0.
+        # So Input res must be % (8 * 4) == 0 => 32.
+        total_stride = 32  
 
         if isinstance(img_size, (list, tuple, ListConfig)):
 
@@ -239,9 +241,10 @@ class mdt(nn.Module):
             B = inp_img.shape[0]
             dist = torch.zeros((B, 4), device=inp_img.device)
 
-        # Pad Input to satisfy U-Net downsampling (2 levels of 2x = 4, but 16 is safer)
+        # Pad Input to satisfy U-Net downsampling and DFFN patch sizes
+        # Level 3 (scale 1/4) needs to be divisible by 8. So Input needs % 32.
         B, C, H, W = inp_img.shape
-        stride = 16
+        stride = 32
 
         pad_h = (stride - H % stride) % stride
         pad_w = (stride - W % stride) % stride

@@ -649,24 +649,31 @@ class TransformerBlock(nn.Module):
 
             # Debug print
 
-            x_windows = window_partition(shifted_x, self.window_size)
+            # Dynamic window size for Stripe Attention
+            current_window_size = self.window_size
+            if isinstance(self.window_size, tuple) and self.window_size[0] == 1:
+                 # If it's a stripe (H=1), adapt Width to current feature map width
+                 if self.window_size[1] != W:
+                     current_window_size = (1, W)
 
-            if type(self.window_size) is tuple:
+            x_windows = window_partition(shifted_x, current_window_size)
+
+            if type(current_window_size) is tuple:
                 x_windows = x_windows.view(
-                    -1, self.window_size[0] * self.window_size[1], C
+                    -1, current_window_size[0] * current_window_size[1], C
                 )
                 attn_windows = self.attn(x_windows, theta_max, mask=self.attn_mask)
                 attn_windows = attn_windows.view(
-                    -1, self.window_size[0], self.window_size[1], C
+                    -1, current_window_size[0], current_window_size[1], C
                 )
             else:
-                x_windows = x_windows.view(-1, self.window_size * self.window_size, C)
+                x_windows = x_windows.view(-1, current_window_size * current_window_size, C)
                 attn_windows = self.attn(x_windows, mask=self.attn_mask)
                 attn_windows = attn_windows.view(
-                    -1, self.window_size, self.window_size, C
+                    -1, current_window_size, current_window_size, C
                 )
 
-            shifted_x = window_reverse(attn_windows, self.window_size, H, W)
+            shifted_x = window_reverse(attn_windows, current_window_size, H, W)
             x = shifted_x
             x = x.view(B, H * W, C)
 
@@ -813,45 +820,11 @@ class PatchEmbed(nn.Module):
             azimuth_buffer=azimuth_buffer,
         )
 
-        sample_locations = get_sample_locations(**params, img_B=B)
-
-        x_ = (
-            sample_locations[0]
-            .reshape(B, -1, self.n_radius * self.n_azimuth, 1)
-            .float()
-        )
-        x_ = x_ / (H // 2)
-        y_ = (
-            sample_locations[1]
-            .reshape(B, -1, self.n_radius * self.n_azimuth, 1)
-            .float()
-        )
-        y_ = y_ / (W // 2)
-        out = torch.cat((y_, x_), dim=3)
-        out = out.to(device)
-
-        x_out = torch.empty(
-            B, self.embed_dim, current_radius_cuts, current_azimuth_cuts, device=device
-        )
-        tensor = (
-            nn.functional.grid_sample(x, out, align_corners=True)
-            .permute(0, 2, 1, 3)
-            .contiguous()
-            .view(-1, self.n_radius * self.n_azimuth * self.in_chans)
-        )
-
-        out_ = self.mlp(tensor)
-        out_ = out_.contiguous().view(B, current_radius_cuts * current_azimuth_cuts, -1)
-
-        out_up = out_.reshape(
-            B, current_azimuth_cuts, current_radius_cuts, self.embed_dim
-        )
-        out_up = out_up.transpose(1, 3)
-        x_out[:, :, :current_radius_cuts, :] = out_up
-        x = x_out.permute(0, 2, 3, 1).contiguous()
-        if self.norm is not None:
-            x = self.norm(x)
-        x = x.permute(0, 3, 1, 2).contiguous()
+        # Optimization: The feature extraction part of PatchEmbed (Polar Grid Sample + MLP)
+        # is unused in MDPhysics because it is overwritten by DPTEmbedding.
+        # We skip the expensive sampling and return x directly to save compute/memory.
+        # The critical outputs here are D_s and theta_max for WindowAttention.
+        
         return x, D_s, theta_max
 
     def flops(self):

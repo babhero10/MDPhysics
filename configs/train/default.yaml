@@ -1,8 +1,8 @@
 lr: 1e-3
 weight_decay: 1e-3
 epochs: 100
-batch_size: 4
-batch_size_val: 1
+batch_size: 32
+batch_size_val: 4
 
 criterion:
   _target_: utils.losses.LossContainer
@@ -10,7 +10,9 @@ criterion:
     sharp_image:
       weight: 1.0
       loss:
-        _target_: utils.losses.CharbonnierLoss
+        _target_: utils.losses.CombinedMDTLoss
+        l1_weight: 1.0
+        fft_weight: 0.1
         reduction: mean
 
 optimizer:

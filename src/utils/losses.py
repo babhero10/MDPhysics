@@ -22,6 +22,44 @@ class CharbonnierLoss(nn.Module):
             raise ValueError(f"Invalid reduction: {self.reduction}")
 
 
+class L1Loss(nn.Module):
+    def __init__(self, reduction: str = "mean"):
+        super().__init__()
+        self.loss = nn.L1Loss(reduction=reduction)
+
+    def forward(self, pred, target):
+        return self.loss(pred, target)
+
+
+class FFTLoss(nn.Module):
+    def __init__(self, reduction: str = "mean"):
+        super().__init__()
+        self.reduction = reduction
+
+    def forward(self, pred, target):
+        pred_fft = torch.fft.fft2(pred.float(), dim=(-2, -1))
+        pred_fft = torch.stack([pred_fft.real, pred_fft.imag], dim=-1)
+        target_fft = torch.fft.fft2(target.float(), dim=(-2, -1))
+        target_fft = torch.stack([target_fft.real, target_fft.imag], dim=-1)
+        
+        loss = torch.nn.functional.l1_loss(pred_fft, target_fft, reduction=self.reduction)
+        return loss
+
+
+class CombinedMDTLoss(nn.Module):
+    def __init__(self, l1_weight=1.0, fft_weight=0.1, reduction="mean"):
+        super().__init__()
+        self.l1_loss = L1Loss(reduction=reduction)
+        self.fft_loss = FFTLoss(reduction=reduction)
+        self.l1_weight = l1_weight
+        self.fft_weight = fft_weight
+
+    def forward(self, pred, target):
+        l_pix = self.l1_loss(pred, target)
+        l_fft = self.fft_loss(pred, target)
+        return self.l1_weight * l_pix + self.fft_weight * l_fft
+
+
 class LossContainer(nn.Module):
     def __init__(self, cfg):
         super().__init__()
