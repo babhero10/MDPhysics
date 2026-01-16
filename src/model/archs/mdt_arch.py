@@ -6,6 +6,7 @@ from einops import rearrange
 from torchvision.ops import DeformConv2d
 from timm.layers import DropPath, to_2tuple, trunc_normal_
 import numpy as np
+import torch.utils.checkpoint as checkpoint
 
 from ..utils.polar_utils import get_sample_params_from_subdiv, get_sample_locations
 
@@ -605,8 +606,10 @@ class TransformerBlock(nn.Module):
         LayerNorm_type="WithBias",
         att=False,
         drop_path=0.0,
+        use_checkpoint=False,
     ):
         super(TransformerBlock, self).__init__()
+        self.use_checkpoint = use_checkpoint
         self.window_size = (1, input_resolution[1])
         self.input_resolution = input_resolution
         self.att = att
@@ -629,17 +632,15 @@ class TransformerBlock(nn.Module):
         self.attn_mask = None
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
-    def forward(self, inp):
-        x = inp[0]  # BCHW
-        D_s = inp[1]
-        theta_max = inp[2]
-
+    def _forward_impl(self, x, D_s, theta_max):
+        # Implementation of the forward pass
         if self.att:
+            x_in = x
             x = x.permute(0, 2, 3, 1)  # BHWC
             B, H, W, C = x.shape
             x = x.view(B, H * W, C)
             B, L, C = x.shape
-            assert L == H * W, "input feature has wrong size"
+            # assert L == H * W, "input feature has wrong size"
 
             shortcut = x
             x = self.norm1(x)
@@ -681,6 +682,18 @@ class TransformerBlock(nn.Module):
             x = x.view(B, H, W, C).permute(0, 3, 1, 2).contiguous()
 
         x = x + self.ffn(self.norm2(x))
+        return x
+
+    def forward(self, inp):
+        x = inp[0]  # BCHW
+        D_s = inp[1]
+        theta_max = inp[2]
+
+        if self.use_checkpoint and x.requires_grad:
+            x = checkpoint.checkpoint(self._forward_impl, x, D_s, theta_max, use_reentrant=False)
+        else:
+            x = self._forward_impl(x, D_s, theta_max)
+            
         out = [x, D_s, theta_max]
         return out
 

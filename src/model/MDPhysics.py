@@ -22,6 +22,7 @@ class mdt(nn.Module):
         img_size=128,
         backbone_name="facebook/dinov2-small",
         patch_size=14,
+        use_checkpoint=True,
     ):
         super(mdt, self).__init__()
 
@@ -119,6 +120,7 @@ class mdt(nn.Module):
         self.ffn_expansion_factor = ffn_expansion_factor
         self.bias = bias
         self.patch_size_polar = self.patch_embed.patch_size
+        self.use_checkpoint = use_checkpoint
 
         # Drop path rates
         drop_path_rate = 0.1
@@ -232,6 +234,7 @@ class mdt(nn.Module):
                     att=att,
                     drop_path=dpr_slice[i] if i < len(dpr_slice) else 0.0,
                     patch_size=self.patch_size_polar,
+                    use_checkpoint=self.use_checkpoint,
                 )
             )
         return nn.Sequential(*layers)

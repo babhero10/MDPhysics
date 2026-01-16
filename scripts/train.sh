@@ -18,4 +18,4 @@ module load cuda/12.1
 # Move to working directory
 cd /ibex/project/c2229/multi_model/image_deblurring/MDPhysics
 
-HYDRA_FULL_ERROR=1 python src/train.py
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HYDRA_FULL_ERROR=1 python src/train.py
