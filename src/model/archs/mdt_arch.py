@@ -653,9 +653,9 @@ class TransformerBlock(nn.Module):
             # Dynamic window size for Stripe Attention
             current_window_size = self.window_size
             if isinstance(self.window_size, tuple) and self.window_size[0] == 1:
-                 # If it's a stripe (H=1), adapt Width to current feature map width
-                 if self.window_size[1] != W:
-                     current_window_size = (1, W)
+                # If it's a stripe (H=1), adapt Width to current feature map width
+                if self.window_size[1] != W:
+                    current_window_size = (1, W)
 
             x_windows = window_partition(shifted_x, current_window_size)
 
@@ -668,7 +668,9 @@ class TransformerBlock(nn.Module):
                     -1, current_window_size[0], current_window_size[1], C
                 )
             else:
-                x_windows = x_windows.view(-1, current_window_size * current_window_size, C)
+                x_windows = x_windows.view(
+                    -1, current_window_size * current_window_size, C
+                )
                 attn_windows = self.attn(x_windows, mask=self.attn_mask)
                 attn_windows = attn_windows.view(
                     -1, current_window_size, current_window_size, C
@@ -690,10 +692,12 @@ class TransformerBlock(nn.Module):
         theta_max = inp[2]
 
         if self.use_checkpoint and x.requires_grad:
-            x = checkpoint.checkpoint(self._forward_impl, x, D_s, theta_max, use_reentrant=False)
+            x = checkpoint.checkpoint(
+                self._forward_impl, x, D_s, theta_max, use_reentrant=False
+            )
         else:
             x = self._forward_impl(x, D_s, theta_max)
-            
+
         out = [x, D_s, theta_max]
         return out
 
@@ -837,7 +841,7 @@ class PatchEmbed(nn.Module):
         # is unused in MDPhysics because it is overwritten by DPTEmbedding.
         # We skip the expensive sampling and return x directly to save compute/memory.
         # The critical outputs here are D_s and theta_max for WindowAttention.
-        
+
         return x, D_s, theta_max
 
     def flops(self):

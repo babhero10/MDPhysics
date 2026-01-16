@@ -43,7 +43,7 @@ class mdt(nn.Module):
         # DFFN has patch_size=8 and runs at Level 3 (downscale 4).
         # Level 3 res must be % 8 == 0.
         # So Input res must be % (8 * 4) == 0 => 32.
-        total_stride = 32  
+        total_stride = 32
 
         if isinstance(img_size, (list, tuple, ListConfig)):
 

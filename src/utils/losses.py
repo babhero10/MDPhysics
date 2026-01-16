@@ -41,8 +41,10 @@ class FFTLoss(nn.Module):
         pred_fft = torch.stack([pred_fft.real, pred_fft.imag], dim=-1)
         target_fft = torch.fft.fft2(target.float(), dim=(-2, -1))
         target_fft = torch.stack([target_fft.real, target_fft.imag], dim=-1)
-        
-        loss = torch.nn.functional.l1_loss(pred_fft, target_fft, reduction=self.reduction)
+
+        loss = torch.nn.functional.l1_loss(
+            pred_fft, target_fft, reduction=self.reduction
+        )
         return loss
 
 
