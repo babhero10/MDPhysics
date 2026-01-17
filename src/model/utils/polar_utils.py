@@ -28,7 +28,6 @@ def linspace(start, stop, num):
     Creates a tensor of shape [num, *start.shape] whose values are evenly spaced from start to end, inclusive.
     Replicates the multi-dimensional behaviour of numpy.linspace in PyTorch.
     """
-    # Create steps on the same device as start tensor
     device = start.device
     steps = torch.arange(num, dtype=torch.float32, device=device) / (num - 1)
 
@@ -52,9 +51,6 @@ def get_sample_params_from_subdiv(
 ):
     """Generate the required parameters to sample every patch based on the subdivision."""
     max_radius = min(img_size) / 2
-    width = img_size[1]
-
-    # D is the input tensor, use its device
     device = D.device
 
     if distortion_model == "spherical":
@@ -79,11 +75,6 @@ def get_sample_params_from_subdiv(
         .repeat_interleave(subdiv[1], 0)
         .reshape(subdiv[0] * subdiv[1], D.shape[1])
     )
-    phi_start = 0
-    phi_end = 2 * torch.tensor(np.pi, device=device)
-    phi_step = alpha
-    # phi_list = torch.arange(phi_start, phi_end, phi_step, device=device)
-    # Use linspace or simple multiplication to ensure correct size
     phi_list = torch.arange(subdiv[1], device=device, dtype=torch.float32) * alpha
     p = phi_list.reshape(1, subdiv[1]).repeat_interleave(subdiv[0], 0)
     phi = p.transpose(1, 0).flatten()
@@ -146,26 +137,10 @@ def get_sample_locations(
     img_B=1,
 ):
     """Get the sample locations in a given radius and azimuth range."""
-    new_f = focal
-    rad = (
-        lambda x: new_f * torch.sin(torch.arctan(x)) / (xi + torch.cos(torch.arctan(x)))
-    )
-    inverse_rad = lambda r: torch.tan(
-        torch.arcsin(xi * r / (new_f) / torch.sqrt(1 + (r / (new_f)) * (r / (new_f))))
-        + torch.arctan(r / (new_f))
-    )
+    B = img_B
 
-    center = [img_size[0] / 2, img_size[1] / 2]
-    if img_size[0] % 2 == 0:
-        center[0] -= 0.5
-    if img_size[1] % 2 == 0:
-        center[1] -= 0.5
-
-    r_end = dmin + ds
     r_start = dmin
     alpha_start = phi
-    B = img_B
-    alpha_end = alpha + phi
 
     radius = r_start.unsqueeze(0)
     radius = torch.transpose(radius, 0, 1)
@@ -211,8 +186,8 @@ def get_inverse_distortion(num_points, D, max_radius, device):
         + torch.outer(D[3], x**8).flatten()
     )
 
-    theta_max = dist_func(torch.tensor([1], device=device))
-    theta = linspace(torch.tensor([0], device=device), theta_max, num_points + 1)
+    theta_max = dist_func(torch.tensor([1.0], device=device))
+    theta = linspace(torch.tensor([0.0], device=device), theta_max, num_points + 1)
 
     test_radius = torch.linspace(0, 1, 50, device=device)
     test_theta = dist_func(test_radius).reshape(D.shape[1], 50).transpose(1, 0)
@@ -233,7 +208,7 @@ def get_inverse_distortion(num_points, D, max_radius, device):
                 y_1 - y_0
             )
 
-    max_rad = torch.tensor([1] * D.shape[1], device=device).reshape(1, D.shape[1])
+    max_rad = torch.tensor([1.0] * D.shape[1], device=device).reshape(1, D.shape[1])
     return torch.cat((radius_list, max_rad), axis=0) * max_radius, theta_max
 
 
@@ -241,13 +216,8 @@ def get_inverse_dist_spherical(num_points, xi, fov, new_f, device):
     rad = (
         lambda x: new_f * torch.sin(torch.arctan(x)) / (xi + torch.cos(torch.arctan(x)))
     )
-    inverse_rad = lambda r: torch.tan(
-        torch.arcsin(xi * r / (new_f) * (1 + (r / (new_f)) * (r / (new_f))))
-        + torch.arctan(r / (new_f))
-    )
-
     theta_d_max = torch.tan(fov / 2).to(device)
-    theta_d = linspace(torch.tensor([0], device=device), theta_d_max, num_points + 1)
+    theta_d = linspace(torch.tensor([0.0], device=device), theta_d_max, num_points + 1)
     r_list = rad(theta_d)
 
     return r_list, theta_d_max

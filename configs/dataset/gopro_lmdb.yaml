@@ -1,14 +1,14 @@
 src_root: ${hydra:runtime.cwd}/data/GoPro/raw
 dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
-img_size: [448, 256]
+patch_size: 128
 num_workers: 4
 
 augmentations:
   _target_: albumentations.Compose
   transforms:
-    - _target_: albumentations.Resize
-      height: ${dataset.img_size[0]}
-      width: ${dataset.img_size[1]}
+    - _target_: albumentations.RandomCrop
+      height: ${dataset.patch_size}
+      width: ${dataset.patch_size}
       p: 1.0
     
     - _target_: albumentations.HorizontalFlip

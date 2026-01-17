@@ -1,4 +1,3 @@
-import sys
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from dataset.Dataset import BlurDataset

@@ -5,10 +5,10 @@ hydra:
   job:
     chdir: false
 
-src_root: ../dataset/GOPRO_Large
+src_root: ../datasets/GOPRO_Large
 dst_root: data/GoPro/raw
 
-val_split: 0.1
+val_split: 0.025
 seed: 42
 
 splits:
