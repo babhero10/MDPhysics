@@ -98,8 +98,8 @@ def main(cfg: DictConfig):
                 batch_size = blur.size(0)
                 for i in range(batch_size):
                     # Prepare per-image tensors (keep 4D for metrics: 1, C, H, W)
-                    pred_tensor = pred[i : i + 1]
-                    sharp_tensor = sharp[i : i + 1]
+                    pred_tensor = pred[i: i + 1]
+                    sharp_tensor = sharp[i: i + 1]
 
                     # Calculate metrics for this image AND accumulate to global
                     current_metrics = {}
