@@ -1,0 +1,16 @@
+name: "mdt_dpt"
+
+arch: 
+  _target_: model.MDT_DPT.MDT_DPT
+  cfg:
+    dim: 48
+    num_blocks: [6, 6, 12, 8]
+    num_refinement_blocks: 4
+    ffn_expansion_factor: 3
+    patch_size: ${dataset.patch_size}
+    
+    # MotionDPT specific parameters
+    backbone_name: "facebook/dinov2-giant"
+    depth_backbone_name: "depth-anything/Depth-Anything-V2-Large"
+    out_indices: [9, 19, 29, 39]
+    freeze_backbones: true

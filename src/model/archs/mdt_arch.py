@@ -597,19 +597,18 @@ class OverlapPatchEmbed(nn.Module):
             in_c, embed_dim, kernel_size=3, stride=1, padding=1, bias=bias
         )
 
-        self.center_offset = nn.Parameter(torch.zeros(2))
         self.polar_offset_conv = nn.Conv2d(
             in_c, 2 * 3 * 3, kernel_size=3, stride=1, padding=1, bias=False
         )
 
     def forward(self, x):
-        out2 = self.conv_polar_fixed(x, self.polar_offset_conv, self.center_offset)
+        out2 = self.conv_polar_fixed(x, self.polar_offset_conv)
         out1 = self.dcon_c(x)
         out2 = self.dconv(x, out2)
         out = out1 + out2
         return out
 
-    def conv_polar_fixed(self, input_tensor, conv_layer, center_offset):
+    def conv_polar_fixed(self, input_tensor, conv_layer):
         res = conv_layer(input_tensor)
         return F.softmax(res, dim=1)
 
@@ -684,8 +683,6 @@ class PatchEmbed(nn.Module):
         self.n_azimuth = n_azimuth
         self.mlp = nn.Linear(self.n_radius * self.n_azimuth * in_chans, embed_dim)
 
-        self.center_offset = nn.Parameter(torch.zeros(2))
-
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
         else:
@@ -715,9 +712,6 @@ class PatchEmbed(nn.Module):
         x_ = x_ / (H // 2)
         y_ = sample_locations[1].reshape(B, n_p, n_s, 1).float()
         y_ = y_ / (W // 2)
-
-        x_ = x_.to(x.device) + self.center_offset[0]
-        y_ = y_.to(x.device) + self.center_offset[1]
 
         out = torch.cat((y_, x_), dim=3)
 
