@@ -1,0 +1,7 @@
+logger_name: "${model.name}"
+logger_filename: "test.log"
+log_dir: "${hydra:runtime.output_dir}"
+logger_level: 0
+
+tensorboard_dir: "${hydra:runtime.cwd}/tensorboard/${model.name}/test/${now:%Y-%m-%d_%H-%M-%S}"
+dir: outputs//
