@@ -42,10 +42,11 @@ def main(cfg: DictConfig):
     metrics = build_metrics(cfg.metrics, device)
 
     # Check if checkpoint was loaded
-    if not cfg.train.last_checkpoint:
+    last_ckpt = OmegaConf.select(cfg, "train.last_checkpoint")
+    if not last_ckpt:
         logger.warning("No checkpoint loaded! Testing with random weights.")
     else:
-        logger.info(f"Loaded checkpoint: {cfg.train.last_checkpoint}")
+        logger.info(f"Loaded checkpoint: {last_ckpt}")
 
     save_dir = Path("images")
     save_dir.mkdir(exist_ok=True, parents=True)

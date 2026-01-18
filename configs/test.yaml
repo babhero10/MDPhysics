@@ -1,15 +1,15 @@
 defaults:
   - _self_
-  - dataset: gopro_lmdb
+  - dataset: gopro_test
   - model: mdt_edited
-  - metrics: default
+  - metrics: test
   - logger: default
-  - train: default
+  - train: test
 
 device: "cuda:0"
 seed: 42
 
 hydra:
   run:
-    dir: outputs/${model.name}/${train.mode}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${model.name}/test/${now:%Y-%m-%d_%H-%M-%S}
 

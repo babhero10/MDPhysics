@@ -1,4 +1,3 @@
 batch_size: 4
-mode: 'test'
 
-last_checkpoint: ''
+last_checkpoint: 'outputs/mdt_edited/2026-01-17_19-01-13/checkpoints/best_model_epoch193.pt'
