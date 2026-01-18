@@ -17,7 +17,7 @@ from utils.logger import Logger
 from utils.visuals import log_visualizations
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config")
+@hydra.main(version_base=None, config_path="../configs", config_name="train")
 def main(cfg: DictConfig):
     # Optimize for modern GPUs
     torch.set_float32_matmul_precision("high")

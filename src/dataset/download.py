@@ -153,9 +153,7 @@ def split_train_val(cfg):
     return True
 
 
-@hydra.main(
-    version_base=None, config_path="../../configs/dataset", config_name="gopro_download"
-)
+@hydra.main(version_base=None, config_path="../../configs", config_name="download")
 def main(cfg: DictConfig):
     if cfg.download:
         if not download_gopro(cfg.src_root):

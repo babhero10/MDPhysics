@@ -1,0 +1,3 @@
+src_root: ${hydra:runtime.cwd}/data/GoPro/raw
+dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
+num_workers: 4

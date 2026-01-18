@@ -11,5 +11,5 @@ seed: 42
 
 hydra:
   run:
-    dir: outputs/${model.name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${model.name}/${train.mode}/${now:%Y-%m-%d_%H-%M-%S}
 

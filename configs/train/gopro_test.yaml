@@ -1,0 +1,4 @@
+batch_size: 4
+mode: 'test'
+
+last_checkpoint: ''

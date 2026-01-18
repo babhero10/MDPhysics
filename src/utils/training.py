@@ -197,8 +197,10 @@ def validate(model, val_loader, criterion, device, metrics=None):
         total_samples += batch_size
 
         if metrics and "sharp_image" in pred:
+            # Clip predictions to valid image range [0, 1] for metrics calculation
+            pred_sharp = torch.clamp(pred["sharp_image"], 0.0, 1.0)
             for metric in metrics.values():
-                metric.update(pred["sharp_image"].detach(), sharp)
+                metric.update(pred_sharp.detach(), sharp)
 
     results = {
         name: metric.compute().item() for name, metric in (metrics or {}).items()

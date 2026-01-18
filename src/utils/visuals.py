@@ -196,12 +196,19 @@ def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, dev
             sample_preds = {}
             for k, v in outputs.items():
                 if isinstance(v, torch.Tensor) and v.dim() == 4:
-                    sample_preds[k] = v[i].cpu().numpy()
+                    val = v[i].cpu().numpy()
+                    # Clip sharp image to valid range [0, 1]
+                    if k == "sharp_image":
+                        val = np.clip(val, 0.0, 1.0)
+                    sample_preds[k] = val
 
             # Calculate metrics for this image (using Tensors)
             img_metrics = {}
             if "sharp_image" in outputs:
                 pred_sharp_tensor = outputs["sharp_image"][i]
+                # Clip to valid range [0, 1]
+                pred_sharp_tensor = torch.clamp(pred_sharp_tensor, 0.0, 1.0)
+
                 target_sharp_tensor = sharp_imgs[i]
 
                 for name, metric in metrics.items():
