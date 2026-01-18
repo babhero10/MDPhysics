@@ -1,3 +1,5 @@
 src_root: ${hydra:runtime.cwd}/data/GoPro/raw
 dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
+patch_size: 128
+
 num_workers: 4

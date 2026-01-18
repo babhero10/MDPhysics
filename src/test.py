@@ -9,6 +9,7 @@ from utils.logger import Logger
 import matplotlib.pyplot as plt
 from pathlib import Path
 import csv
+from hydra.core.hydra_config import HydraConfig
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="test")
@@ -42,18 +43,27 @@ def main(cfg: DictConfig):
     metrics = build_metrics(cfg.metrics, device)
 
     # Check if checkpoint was loaded
+    # Use OmegaConf.select to safely access nested keys that might be missing
     last_ckpt = OmegaConf.select(cfg, "train.last_checkpoint")
     if not last_ckpt:
         logger.warning("No checkpoint loaded! Testing with random weights.")
     else:
         logger.info(f"Loaded checkpoint: {last_ckpt}")
 
-    save_dir = Path("images")
+    # Determine Output Directory
+    try:
+        output_dir = Path(HydraConfig.get().runtime.output_dir)
+    except Exception:
+        # Fallback if not running via hydra (e.g. direct python execution without @hydra.main)
+        # Though in this script @hydra.main is used.
+        output_dir = Path.cwd()
+
+    save_dir = output_dir / "images"
     save_dir.mkdir(exist_ok=True, parents=True)
     logger.info(f"Saving visualized results to: {save_dir.resolve()}")
 
     # CSV File Setup
-    csv_path = Path("results.csv")
+    csv_path = output_dir / "results.csv"
     csv_file = open(csv_path, "w", newline="")
     csv_writer = csv.writer(csv_file)
 
@@ -110,7 +120,7 @@ def main(cfg: DictConfig):
                         [f"{k}: {v:.4f}" for k, v in current_metrics.items()]
                     )
 
-                    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+                    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
                     fig.suptitle(
                         f"Image {image_counter:06d}\n{metric_str}", fontsize=12
                     )
@@ -129,6 +139,18 @@ def main(cfg: DictConfig):
                     axes[2].imshow(sharp_np[i])
                     axes[2].set_title("GT")
                     axes[2].axis("off")
+
+                    # Difference Map
+                    diff = torch.abs(pred[i] - sharp[i]).permute(1, 2, 0).cpu().numpy()
+                    # Average over channels for a single heatmap intensity
+                    diff_intensity = diff.mean(axis=2)
+                    # Normalize diff for better visualization or keep raw to see intensity
+                    im_diff = axes[3].imshow(
+                        diff_intensity, cmap="inferno", vmin=0, vmax=0.1
+                    )
+                    axes[3].set_title("Diff (x10 contrast)")
+                    axes[3].axis("off")
+                    plt.colorbar(im_diff, ax=axes[3], fraction=0.046, pad=0.04)
 
                     plt.tight_layout()
                     plt.savefig(save_dir / f"{image_counter:06d}.png")
