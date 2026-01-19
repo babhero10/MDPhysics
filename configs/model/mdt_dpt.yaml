@@ -12,5 +12,6 @@ arch:
     # MotionDPT specific parameters
     backbone_name: "facebook/dinov2-giant"
     depth_backbone_name: "depth-anything/Depth-Anything-V2-Large"
+    depth_backbone: False
     out_indices: [9, 19, 29, 39]
     freeze_backbones: true

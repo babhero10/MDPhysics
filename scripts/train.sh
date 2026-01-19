@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:a100:1
 #SBATCH --cpus-per-gpu=4
 #SBATCH --mem=32G
-#SBATCH --time=1-00:00:00
+#SBATCH --time=1-12:00:00
 #SBATCH --output=/ibex/project/c2229/multi_model/image_deblurring/MDPhysics/logs/log.out
 #SBATCH --error=/ibex/project/c2229/multi_model/image_deblurring/MDPhysics/logs/log.err
 
@@ -18,4 +18,4 @@ module load cuda/12.1
 # Move to working directory
 cd /ibex/project/c2229/multi_model/image_deblurring/MDPhysics
 
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HYDRA_FULL_ERROR=1 python src/train.py
+HYDRA_FULL_ERROR=1 python src/train.py
