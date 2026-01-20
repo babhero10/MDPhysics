@@ -66,25 +66,6 @@ class Mlp(nn.Module):
         return x
 
 
-def R(window_size, num_heads, radius, D, a_r, b_r, r_max):
-    a_r = a_r[radius.view(-1)].reshape(
-        window_size[0] * window_size[1], window_size[0] * window_size[1], num_heads
-    )
-    b_r = b_r[radius.view(-1)].reshape(
-        window_size[0] * window_size[1], window_size[0] * window_size[1], num_heads
-    )
-    radius = radius[None, :, None, :].repeat(num_heads, 1, D.shape[0], 1)
-    radius = D * radius
-
-    radius = radius.transpose(0, 1).transpose(1, 2).transpose(2, 3).transpose(0, 1)
-
-    A_r = a_r * torch.cos(radius * 2 * pi / r_max) + b_r * torch.sin(
-        radius * 2 * pi / r_max
-    )
-
-    return A_r
-
-
 def theta(window_size, num_heads, radius, theta_max, a_r, b_r, H, total_batch_size):
     if theta_max.numel() == 0:
         return torch.zeros(
@@ -648,126 +629,63 @@ class PatchEmbed(nn.Module):
         distortion_model="polynomial",
         radius_cuts=16,
         azimuth_cuts=64,
-        radius=None,
-        azimuth=None,
-        in_chans=3,
-        embed_dim=96,
         n_radius=8,
         n_azimuth=16,
-        norm_layer=None,
     ):
         super().__init__()
-        img_size = to_2tuple(img_size)
-
-        patches_resolution = [radius_cuts, azimuth_cuts]
-        self.azimuth_cuts = azimuth_cuts
-        self.radius_cuts = radius_cuts
-        self.subdiv = (self.radius_cuts, self.azimuth_cuts)
-        self.img_size = img_size
-        self.distoriton_model = distortion_model
-        self.radius = radius
-        self.azimuth = azimuth
-        self.max_azimuth = np.pi * 2
-        patch_size = [
-            self.img_size[0] / (2 * radius_cuts),
-            self.max_azimuth / azimuth_cuts,
-        ]
-
-        self.patch_size = patch_size
-        self.patches_resolution = patches_resolution
-        self.num_patches = radius_cuts * azimuth_cuts
-        self.in_chans = in_chans
-        self.embed_dim = embed_dim
-
+        self.img_size = to_2tuple(img_size)
+        self.distortion_model = distortion_model
+        self.subdiv = (radius_cuts, azimuth_cuts)
         self.n_radius = n_radius
         self.n_azimuth = n_azimuth
-        self.mlp = nn.Linear(self.n_radius * self.n_azimuth * in_chans, embed_dim)
 
-        if norm_layer is not None:
-            self.norm = norm_layer(embed_dim)
-        else:
-            self.norm = None
+        patch_size = [self.img_size[0] / (2 * radius_cuts), 2 * pi / azimuth_cuts]
+        self.patch_size = patch_size
+
+        self.azimuth_cuts = azimuth_cuts
+        self.radius_cuts = radius_cuts
+
+        patches_resolution = [
+            radius_cuts,
+            azimuth_cuts,
+        ]  ### azimuth is always cut in even partition
+        self.patches_resolution = patches_resolution
+        self.num_patches = radius_cuts * azimuth_cuts
 
     def forward(self, x, dist):
-        B, C, H, W = x.shape
+        # We only need H and W to define the coordinate space
+        _, _, H, W = x.shape
 
-        dist = dist.transpose(1, 0)
-        radius_buffer, azimuth_buffer = 0, 0
-        params, D_s, theta_max = get_sample_params_from_subdiv(
+        # Transpose dist and get parameters
+        # params is ignored as you only want D_s and theta_max
+        _, D_s, theta_max = get_sample_params_from_subdiv(
             subdiv=self.subdiv,
             img_size=(H, W),
-            distortion_model=self.distoriton_model,
-            D=dist,
+            distortion_model=self.distortion_model,
+            D=dist.transpose(1, 0),
             n_radius=self.n_radius,
             n_azimuth=self.n_azimuth,
-            radius_buffer=radius_buffer,
-            azimuth_buffer=azimuth_buffer,
+            radius_buffer=0,
+            azimuth_buffer=0,
         )
 
-        sample_locations = get_sample_locations(**params, img_B=B)
-
-        B2, n_p, n_s = sample_locations[0].shape
-
-        x_ = sample_locations[0].reshape(B, n_p, n_s, 1).float()
-        x_ = x_ / (H // 2)
-        y_ = sample_locations[1].reshape(B, n_p, n_s, 1).float()
-        y_ = y_ / (W // 2)
-
-        out = torch.cat((y_, x_), dim=3)
-
-        x_out = torch.empty(
-            B, self.embed_dim, self.radius_cuts, self.azimuth_cuts, device=x.device
-        )
-
-        tensor = (
-            nn.functional.grid_sample(x, out, align_corners=True)
-            .permute(0, 2, 1, 3)
-            .contiguous()
-            .view(-1, self.n_radius * self.n_azimuth * self.in_chans)
-        )
-
-        out_ = self.mlp(tensor)
-        out_ = out_.contiguous().view(B, self.radius_cuts * self.azimuth_cuts, -1)
-
-        out_up = out_.reshape(B, self.azimuth_cuts, self.radius_cuts, self.embed_dim)
-        out_up = out_up.transpose(1, 3)
-
-        x_out[:, :, : self.radius_cuts, :] = out_up
-        x = x_out.permute(0, 2, 3, 1).contiguous()
-        if self.norm is not None:
-            x = self.norm(x)
-        x = x.permute(0, 3, 1, 2).contiguous()
-        return x, D_s, theta_max
-
-    def flops(self):
-        Ho, Wo = self.patches_resolution
-        flops = (
-            Ho
-            * Wo
-            * self.embed_dim
-            * self.in_chans
-            * (self.patch_size[0] * self.patch_size[1])
-        )
-        if self.norm is not None:
-            flops += Ho * Wo * self.embed_dim
-        return flops
+        return D_s, theta_max
 
 
 class mdt(nn.Module):
-    def __init__(
-        self,
-        inp_channels=3,
-        out_channels=3,
-        dim=48,
-        num_blocks=[6, 6, 12, 8],
-        num_refinement_blocks=4,
-        ffn_expansion_factor=3,
-        bias=False,
-        patch_size=128,
-    ):
+    def __init__(self, cfg):
         super(mdt, self).__init__()
 
-        res = patch_size
+        inp_channels = cfg.get("inp_channels", 3)
+        out_channels = cfg.get("out_channels", 3)
+        dim = cfg.get("dim", 48)
+        num_blocks = cfg.get("num_blocks", [6, 6, 12, 8])
+        num_refinement_blocks = cfg.get("num_refinement_blocks", 4)
+        ffn_expansion_factor = cfg.get("ffn_expansion_factor", 3)
+        bias = cfg.get("bias", False)
+        img_size = cfg.get("img_size", 128)
+
+        res = img_size
         distortion_model = "polynomial"
         norm_layer = nn.LayerNorm
         radius_cuts = res
@@ -786,17 +704,12 @@ class mdt(nn.Module):
 
         self.patch_embed0 = OverlapPatchEmbed(inp_channels, dim)
         self.patch_embed = PatchEmbed(
-            img_size=patch_size,
+            img_size=img_size,
             distortion_model=distortion_model,
             radius_cuts=radius_cuts,
             azimuth_cuts=azimuth_cuts,
-            radius=radius,
-            azimuth=theta,
-            in_chans=inp_channels,
-            embed_dim=dim,
             n_radius=n_radius,
             n_azimuth=n_azimuth,
-            norm_layer=norm_layer,
         )
 
         drop_rate = 0.0
@@ -1040,7 +953,7 @@ class mdt(nn.Module):
         if pad_h > 0 or pad_w > 0:
             inp_img = F.pad(inp_img, (0, pad_w, 0, pad_h), mode="reflect")
 
-        inp_enc_level1, D_s, theta_max = self.patch_embed(inp_img, dist)
+        D_s, theta_max = self.patch_embed(inp_img, dist)
         inp_enc_level1 = self.patch_embed0(inp_img)
 
         if self.ape:

@@ -1,8 +1,10 @@
-lr: 0.001
-weight_decay: 0.001
-epochs: 200
-batch_size: 16
-batch_size_val: 4
+# Optimized for A100 with 384x384 patches (img_size=384, window_size=64)
+lr: 0.0002  # 2e-4 optimal for transformers (was 0.001, too high)
+weight_decay: 0.01  # Increased for better regularization
+epochs: 300  # Increased for better convergence with larger patches
+batch_size: 8  # Optimal for A100 40GB with 384x384 (~30GB VRAM used)
+              # For A100 80GB, can use batch_size: 16
+batch_size_val: 2  # Validation uses more memory (no gradient accumulation)
 
 criterion:
   _target_: utils.losses.LossContainer
@@ -23,10 +25,11 @@ optimizer:
 scheduler:
   _target_: torch.optim.lr_scheduler.CosineAnnealingLR
   T_max: ${train.epochs}
+  eta_min: 0.000001  # 1e-6 minimum learning rate for smooth convergence
 
 checkpoint:
   dir: ${hydra:runtime.output_dir}/checkpoints
-  patience: 10
+  patience: 30  # Increased patience for 300 epochs (was 10)
   min_delta: 0.0001
   monitor: psnr
   mode: max

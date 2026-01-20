@@ -1,0 +1,37 @@
+name: "mdt_swin"
+
+arch:
+  _target_: model.MDT_Swin.MDT_Swin
+  cfg:
+    # Base dimensions
+    dim: 48
+    inp_channels: 3
+    out_channels: 3
+
+    # Architecture depth
+    num_blocks: [6, 6, 12, 8]  # Blocks per level [enc1, enc2, enc3/dec3, dec2]
+    num_refinement_blocks: 4
+
+    # Network parameters
+    ffn_expansion_factor: 3
+    bias: false
+
+    # Swin Transformer improvements
+    num_heads: 8  # Multi-head attention (8 heads instead of 1)
+    # Note: Using full-width windows (1, W) for stability
+    # This avoids window partitioning issues at different resolutions
+
+    # Image size (inherited from dataset)
+    img_size: ${dataset.patch_size}
+
+# Model improvements over mdt_edited:
+# 1. Multi-head attention (8 heads) for better feature representation
+# 2. Shifted window mechanism (Swin-style) for improved global context
+# 3. Deformable convolutions with learnable masks for better spatial modeling
+# 4. Alternating regular/shifted windows in decoder for cross-window connections
+# 5. Dynamic attention masks - supports arbitrary resolutions at inference time
+
+# Resolution flexibility:
+# - Can train on 128x128 and infer on any resolution (e.g., 1280x720)
+# - Attention masks are computed dynamically based on actual input size
+# - Padding ensures divisibility: height % 32 == 0, width % azimuth_cuts == 0

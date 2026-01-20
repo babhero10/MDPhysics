@@ -1,17 +1,26 @@
 name: "mdt_dpt"
 
-arch: 
+arch:
   _target_: model.MDT_DPT.MDT_DPT
   cfg:
-    dim: 48
+    # ViT Backbone
+    num_vit_layers: 12
+    embed_dim: 768
+    num_heads: 12
+    
+    # Resolution & Patching
+    patch_size_vit: 16
+    
+    # DPT Config
+    reassemble_layers: [2, 5, 8, 11]
+    decoder_channels: 256
+    
+    # Depth Integration
+    use_depth: true
+    depth_model_repo: "depth-anything/Depth-Anything-V2-Large-hf"
+    
+    dim: 48 
     num_blocks: [6, 6, 12, 8]
     num_refinement_blocks: 4
     ffn_expansion_factor: 3
-    patch_size: ${dataset.patch_size}
-    
-    # MotionDPT specific parameters
-    backbone_name: "facebook/dinov2-giant"
-    depth_backbone_name: "depth-anything/Depth-Anything-V2-Large"
-    depth_backbone: False
-    out_indices: [9, 19, 29, 39]
-    freeze_backbones: true
+    img_size: ${dataset.patch_size}

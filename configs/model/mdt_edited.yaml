@@ -7,4 +7,4 @@ arch:
     num_blocks: [6, 6, 12, 8]
     num_refinement_blocks: 4
     ffn_expansion_factor: 3
-    patch_size: ${dataset.patch_size}
+    img_size: ${dataset.patch_size}

@@ -1,7 +1,7 @@
 src_root: ${hydra:runtime.cwd}/data/GoPro/raw
 dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
-patch_size: 128
-num_workers: 4
+patch_size: 384  # Changed to 384 for optimal A100 training (6 windows with window_size=64)
+num_workers: 8  # Increased for A100 (can handle more I/O)
 
 augmentations:
   _target_: albumentations.Compose

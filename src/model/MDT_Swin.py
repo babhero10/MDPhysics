@@ -4,12 +4,9 @@ import torch.nn.functional as F
 import numbers
 from einops import rearrange
 from torchvision.ops import DeformConv2d
-from transformers import AutoModelForDepthEstimation
-
-from .dpt import VisionTransformer, Reassemble, FeatureFusionBlock, DPTHead
 
 from timm.layers import DropPath, to_2tuple, trunc_normal_
-from ..utils.polar_utils import get_sample_params_from_subdiv, get_sample_locations
+from .utils.polar_utils import get_sample_params_from_subdiv, get_sample_locations
 import numpy as np
 
 pi = 3.141592653589793
@@ -177,6 +174,7 @@ class WindowAttention(nn.Module):
         input_resolution,
         dim,
         window_size,
+        num_heads=8,  # IMPROVED: Multi-head attention (default 8 instead of 1)
         qkv_bias=True,
         qk_scale=None,
         attn_drop=0.0,
@@ -187,7 +185,7 @@ class WindowAttention(nn.Module):
         self.input_resolution = input_resolution
         self.patch_size = patch_size
         self.window_size = window_size
-        self.num_heads = 1
+        self.num_heads = num_heads  # IMPROVED: Configurable multi-head
         head_dim = dim // self.num_heads
         self.scale = qk_scale or head_dim**-0.5
         H, W = input_resolution
@@ -463,6 +461,7 @@ class TransformerBlock(nn.Module):
         patch_size,
         input_resolution,
         dim,
+        num_heads=8,  # IMPROVED: Multi-head parameter
         ffn_expansion_factor=2.66,
         bias=False,
         LayerNorm_type="WithBias",
@@ -481,6 +480,7 @@ class TransformerBlock(nn.Module):
                 self.input_resolution,
                 dim,
                 window_size=to_2tuple(self.window_size),
+                num_heads=num_heads,  # IMPROVED: Pass multi-head parameter
                 qkv_bias=True,
                 qk_scale=None,
                 attn_drop=0.0,
@@ -540,7 +540,7 @@ class TransformerBlock(nn.Module):
 
 
 class Fuse(nn.Module):
-    def __init__(self, n_feat, l, patches_resolution, patch_size):
+    def __init__(self, n_feat, l, patches_resolution, patch_size, num_heads=8):
         super(Fuse, self).__init__()
 
         self.n_feat = n_feat
@@ -551,6 +551,7 @@ class Fuse(nn.Module):
                 patches_resolution[1] // (4**l),
             ),
             dim=n_feat * 2,
+            num_heads=num_heads,  # IMPROVED: Pass num_heads
         )
 
         self.conv = nn.Conv2d(n_feat * 2, n_feat * 2, 1, 1, 0)
@@ -567,154 +568,34 @@ class Fuse(nn.Module):
         return x
 
 
-class MDT_DPT_Impl(nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
+class OverlapPatchEmbed(nn.Module):
+    def __init__(self, in_c=3, embed_dim=48, bias=False):
+        super(OverlapPatchEmbed, self).__init__()
 
-        # --- Configuration ---
-        self.patch_size_vit = cfg.get("patch_size_vit", 16)
-        self.num_vit_layers = cfg.get("num_vit_layers", 12)
-        # reassemble_layers is implicitly defined by the dpt.py backbone implementation
-        # but we keep the config parameter for consistency/reference
-        self.reassemble_layers = cfg.get("reassemble_layers", [2, 5, 8, 11])
-
-        self.use_depth = cfg.get("use_depth", False)
-        self.depth_model_repo = cfg.get(
-            "depth_model_repo", "depth-anything/Depth-Anything-V2-Small-hf"
+        self.proj = nn.Conv2d(
+            in_c, embed_dim, kernel_size=3, stride=1, padding=1, bias=bias
+        )
+        self.dconv = DeformConv2d(
+            in_c, embed_dim, kernel_size=3, stride=1, padding=1, bias=bias
+        )
+        self.dcon_c = DConv(
+            in_c, embed_dim, kernel_size=3, stride=1, padding=1, bias=bias
         )
 
-        self.out_channels = cfg.get("dim", 48)
-
-        embed_dim = cfg.get("embed_dim", 768)
-        num_heads = cfg.get("num_heads", 12)
-        decoder_channels = cfg.get("decoder_channels", 256)
-
-        # --- 1. Depth Backbone (Frozen) ---
-        self.depth_model = AutoModelForDepthEstimation.from_pretrained(
-            self.depth_model_repo
-        )
-        self.depth_model.eval()
-        for param in self.depth_model.parameters():
-            param.requires_grad = False
-
-        # --- 2. ViT Backbone ---
-        # Replaces OverlapPatchEmbed with DPT's VisionTransformer
-        self.backbone = VisionTransformer(
-            patch_size=self.patch_size_vit,
-            in_channels=3,
-            embed_dim=embed_dim,
-            depth=self.num_vit_layers,
-            num_heads=num_heads,
+        self.polar_offset_conv = nn.Conv2d(
+            in_c, 2 * 3 * 3, kernel_size=3, stride=1, padding=1, bias=False
         )
 
-        # --- 3. Shared Reassemble Layers ---
-        # 4 levels corresponding to the 4 features extracted by ViT
-        self.reassemble = nn.ModuleList(
-            [
-                Reassemble(embed_dim, decoder_channels, upsample_factor=4),
-                Reassemble(embed_dim, decoder_channels, upsample_factor=2),
-                Reassemble(embed_dim, decoder_channels, upsample_factor=1),
-                Reassemble(embed_dim, decoder_channels, upsample_factor=1),
-            ]
-        )
+    def forward(self, x):
+        out2 = self.conv_polar_fixed(x, self.polar_offset_conv)
+        out1 = self.dcon_c(x)
+        out2 = self.dconv(x, out2)
+        out = out1 + out2
+        return out
 
-        # --- 4. Independent Fusion & Heads ---
-
-        # Head Fr (Rotation)
-        self.fusion_r = nn.ModuleList(
-            [
-                FeatureFusionBlock(decoder_channels),
-                FeatureFusionBlock(decoder_channels),
-                FeatureFusionBlock(decoder_channels),
-                FeatureFusionBlock(decoder_channels),
-            ]
-        )
-        self.head_r = DPTHead(decoder_channels, self.out_channels)  # 3 channels output
-
-        # Head Ft (Translation)
-        self.fusion_t = nn.ModuleList(
-            [
-                FeatureFusionBlock(decoder_channels),
-                FeatureFusionBlock(decoder_channels),
-                FeatureFusionBlock(decoder_channels),
-                FeatureFusionBlock(decoder_channels),
-            ]
-        )
-        self.head_t = DPTHead(decoder_channels, self.out_channels)
-
-    def forward_fusion_head(self, reassembled_features, fusion_blocks, head):
-        """
-        Forward pass for Fusion and Head components of one branch.
-        reassembled_features: List of 4 feature maps [f1, f2, f3, f4]
-        fusion_blocks: List of 4 FeatureFusionBlock
-        head: DPTHead
-        """
-        # Unpack features (f1=HighRes, f4=LowRes)
-        f1, f2, f3, f4 = reassembled_features
-
-        # Fusion (Bottom-Up)
-        # Note: fusion_blocks order matches f1..f4, but DPT fuses from f4 up to f1
-        out = fusion_blocks[3](f4)
-        out = fusion_blocks[2](f3, out)
-        out = fusion_blocks[1](f2, out)
-        out = fusion_blocks[0](f1, out)
-
-        # Head
-        return head(out)
-
-    def forward(self, x, dist=None):
-        # x: (B, 3, H, W)
-        input_size = x.shape[-2:]
-
-        if self.use_depth:
-            # --- Depth Estimation ---
-            with torch.no_grad():
-                # DepthAnything expects pixel_values. Assuming x is compatible.
-                depth_out = self.depth_model(pixel_values=x)
-                depth_map = depth_out.predicted_depth
-
-                # Interpolate depth to input size
-                depth_map = F.interpolate(
-                    depth_map.unsqueeze(1),
-                    size=input_size,
-                    mode="bilinear",
-                    align_corners=False,
-                )
-
-                # Prevent division by zero and extremely small values
-                depth_map = torch.clamp(depth_map, min=1e-6)
-
-        # --- Feature Extraction (ViT) ---
-        features = self.backbone(x)
-
-        # --- Reassemble (Shared) ---
-        # Compute reassembled features once to save computation
-        reassembled = [
-            self.reassemble[0](features[0][0], features[0][1], features[0][2]),
-            self.reassemble[1](features[1][0], features[1][1], features[1][2]),
-            self.reassemble[2](features[2][0], features[2][1], features[2][2]),
-            self.reassemble[3](features[3][0], features[3][1], features[3][2]),
-        ]
-
-        # --- Dual-Head Prediction ---
-        out_r = self.forward_fusion_head(reassembled, self.fusion_r, self.head_r)
-        out_t = self.forward_fusion_head(reassembled, self.fusion_t, self.head_t)
-
-        # Upsample to input resolution (DPT output is usually lower res)
-        out_r = F.interpolate(
-            out_r, size=input_size, mode="bilinear", align_corners=False
-        )
-        out_t = F.interpolate(
-            out_t, size=input_size, mode="bilinear", align_corners=False
-        )
-
-        # --- Conditional Fusion ---
-        if self.use_depth:
-            output = out_r + (out_t / depth_map)
-        else:
-            output = out_r + out_t
-
-        return output
+    def conv_polar_fixed(self, input_tensor, conv_layer):
+        res = conv_layer(input_tensor)
+        return F.softmax(res, dim=1)
 
 
 class Downsample(nn.Module):
@@ -806,9 +687,10 @@ class mdt(nn.Module):
         num_refinement_blocks = cfg.get("num_refinement_blocks", 4)
         ffn_expansion_factor = cfg.get("ffn_expansion_factor", 3)
         bias = cfg.get("bias", False)
-        patch_size = cfg.get("patch_size", 128)
+        img_size = cfg.get("img_size", 128)
+        num_heads = cfg.get("num_heads", 8)  # IMPROVED: Multi-head attention
 
-        res = patch_size
+        res = img_size
         distortion_model = "polynomial"
         norm_layer = nn.LayerNorm
         radius_cuts = res
@@ -825,9 +707,9 @@ class mdt(nn.Module):
         radius = cartesian.norm(dim=0)
         theta = torch.atan2(cartesian[1], cartesian[0])
 
-        self.patch_embed0 = MDT_DPT_Impl(cfg)
+        self.patch_embed0 = OverlapPatchEmbed(inp_channels, dim)
         self.patch_embed = PatchEmbed(
-            img_size=patch_size,
+            img_size=img_size,
             distortion_model=distortion_model,
             radius_cuts=radius_cuts,
             azimuth_cuts=azimuth_cuts,
@@ -910,6 +792,7 @@ class mdt(nn.Module):
                         patches_resolution[1] // (patches_res_num**2),
                     ),
                     dim=int(dim * 2**2),
+                    num_heads=num_heads,  # IMPROVED: Multi-head attention
                     ffn_expansion_factor=ffn_expansion_factor,
                     bias=bias,
                     att=True,
@@ -932,6 +815,7 @@ class mdt(nn.Module):
                         patches_resolution[1] // (patches_res_num**1),
                     ),
                     dim=int(dim * 2**1),
+                    num_heads=num_heads,  # IMPROVED: Multi-head attention
                     ffn_expansion_factor=ffn_expansion_factor,
                     bias=bias,
                     att=True,
@@ -952,6 +836,7 @@ class mdt(nn.Module):
                         patches_resolution[1] // (patches_res_num**0),
                     ),
                     dim=int(dim),
+                    num_heads=num_heads,  # IMPROVED: Multi-head attention
                     ffn_expansion_factor=ffn_expansion_factor,
                     bias=bias,
                     att=True,
@@ -970,6 +855,7 @@ class mdt(nn.Module):
                         patches_resolution[1] // (patches_res_num**0),
                     ),
                     dim=int(dim),
+                    num_heads=num_heads,  # IMPROVED: Multi-head attention
                     ffn_expansion_factor=ffn_expansion_factor,
                     bias=bias,
                     att=True,
@@ -980,8 +866,8 @@ class mdt(nn.Module):
             ]
         )
 
-        self.fuse2 = Fuse(dim * 2, 2, patches_resolution, patch_size_val)
-        self.fuse1 = Fuse(dim, 1, patches_resolution, patch_size_val)
+        self.fuse2 = Fuse(dim * 2, 2, patches_resolution, patch_size_val, num_heads)  # IMPROVED
+        self.fuse1 = Fuse(dim, 1, patches_resolution, patch_size_val, num_heads)  # IMPROVED
         self.output = nn.Conv2d(
             int(dim), out_channels, kernel_size=3, stride=1, padding=1, bias=bias
         )
@@ -1121,3 +1007,29 @@ class mdt(nn.Module):
             out_dec_level1 = out_dec_level1[:, :, :H_orig, :W_orig]
 
         return [out_dec_level1]
+
+
+# Wrapper class for compatibility with training pipeline
+class MDT_Swin(mdt):
+    """MDT with Multi-Head Attention improvements (simplified version)
+    
+    Key improvements over original MDT:
+    1. Multi-head attention (8 heads instead of 1) for better feature representation
+    2. Uses full-width windows (1, W) - same as original MDT
+    3. Stable and works with any resolution at inference
+    
+    Args:
+        cfg: Configuration dictionary with keys:
+            - img_size: Image size (default: 128)
+            - num_heads: Number of attention heads (default: 8)
+            - dim: Base dimension (default: 48)
+            - num_blocks: Blocks per level (default: [6, 6, 12, 8])
+            - Other standard MDT parameters
+    """
+    def __init__(self, cfg):
+        super().__init__(cfg)
+
+    def forward(self, x):
+        out_list = super().forward(x, dist=None)
+        return {"sharp_image": out_list[0]}
+
