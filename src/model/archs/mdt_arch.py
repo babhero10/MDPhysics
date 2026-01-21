@@ -587,11 +587,13 @@ class OverlapPatchEmbed(nn.Module):
         out1 = self.dcon_c(x)
         out2 = self.dconv(x, out2)
 
-        # Divide out1 by depth map if provided
+        # Multiply out1 by normalized depth map if provided
         if depth is not None:
-            # Clamp depth to avoid division by zero
-            depth = torch.clamp(depth, min=1e-6)
-            out1 = out1 / depth
+            # Normalize depth to [0, 1] range per sample
+            depth_min = depth.amin(dim=(1, 2, 3), keepdim=True)
+            depth_max = depth.amax(dim=(1, 2, 3), keepdim=True)
+            depth_normalized = (depth - depth_min) / (depth_max - depth_min + 1e-6)
+            out1 = out1 * depth_normalized
 
         out = out1 + out2
         return out
