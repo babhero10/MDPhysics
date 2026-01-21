@@ -589,10 +589,12 @@ class OverlapPatchEmbed(nn.Module):
 
         # Multiply out1 by normalized depth map if provided
         if depth is not None:
-            # Normalize depth to [0, 1] range per sample
+            # Normalize depth to [0.5, 1.5] range to avoid zeroing out features
             depth_min = depth.amin(dim=(1, 2, 3), keepdim=True)
             depth_max = depth.amax(dim=(1, 2, 3), keepdim=True)
             depth_normalized = (depth - depth_min) / (depth_max - depth_min + 1e-6)
+            # Scale to [0.5, 1.5] instead of [0, 1] for numerical stability
+            depth_normalized = depth_normalized + 0.5
             out1 = out1 * depth_normalized
 
         out = out1 + out2

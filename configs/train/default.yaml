@@ -33,3 +33,4 @@ checkpoint:
   mode: max
 
 last_checkpoint: ''
+start_epoch: 0  # Set to resume epoch (0-indexed, so 51 means start from epoch 52)

@@ -94,9 +94,18 @@ def main(cfg: DictConfig):
     scaler_device = "cuda" if "cuda" in cfg.device else "cpu"
     scaler = torch.amp.GradScaler(scaler_device)
 
+    # Handle resume from checkpoint
+    start_epoch = cfg.train.get("start_epoch", 0)
+    if start_epoch > 0:
+        logger.info(f"Resuming from epoch {start_epoch + 1}")
+        # Step scheduler to match the resume epoch
+        for _ in range(start_epoch):
+            scheduler.step()
+        logger.info(f"Scheduler stepped to epoch {start_epoch}, LR: {scheduler.get_last_lr()[0]:.6f}")
+
     logger.info("Training Started!")
 
-    for epoch in range(cfg.train.epochs):
+    for epoch in range(start_epoch, cfg.train.epochs):
         logger.info(f"Epoch {epoch + 1} | Training...")
         train_losses, train_metrics = train_one_epoch(
             model,
