@@ -1,19 +1,28 @@
 src_root: ${hydra:runtime.cwd}/data/GoPro/raw
-dst_root: ${hydra:runtime.cwd}/data/GoPro/processed
-patch_size: 384  # Changed to 384 for optimal A100 training (6 windows with window_size=64)
-num_workers: 8  # Increased for A100 (can handle more I/O)
+dst_root: ${hydra:runtime.cwd}/data/GoPro/processed_depth
+patch_size: 128
+num_workers: 8
+use_depth: true
+depth_model_repo: "depth-anything/Depth-Anything-V2-Large-hf"
 
-augmentations:
+spatial_augmentations:
   _target_: albumentations.Compose
   transforms:
     - _target_: albumentations.RandomCrop
       height: ${dataset.patch_size}
       width: ${dataset.patch_size}
       p: 1.0
-    
+
     - _target_: albumentations.HorizontalFlip
       p: 0.5
-    
+
+  additional_targets:
+    sharp: image
+    depth: image
+
+color_augmentations:
+  _target_: albumentations.Compose
+  transforms:
     - _target_: albumentations.RandomGamma
       gamma_limit: [80, 120]
       p: 0.5

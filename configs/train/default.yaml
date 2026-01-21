@@ -1,10 +1,8 @@
-# Optimized for A100 with 384x384 patches (img_size=384, window_size=64)
-lr: 0.0002  # 2e-4 optimal for transformers (was 0.001, too high)
-weight_decay: 0.01  # Increased for better regularization
-epochs: 300  # Increased for better convergence with larger patches
-batch_size: 8  # Optimal for A100 40GB with 384x384 (~30GB VRAM used)
-              # For A100 80GB, can use batch_size: 16
-batch_size_val: 2  # Validation uses more memory (no gradient accumulation)
+lr: 0.001
+weight_decay: 0.001
+epochs: 300
+batch_size: 16
+batch_size_val: 4
 
 criterion:
   _target_: utils.losses.LossContainer
@@ -14,7 +12,7 @@ criterion:
       loss:
         _target_: utils.losses.CombinedMDTLoss
         l1_weight: 1.0
-        fft_weight: 0.2
+        fft_weight: 0.15
         reduction: mean
 
 optimizer:

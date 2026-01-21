@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --partition=batch
 #SBATCH --gres=gpu:a100:1
-#SBATCH --cpus-per-gpu=4
+#SBATCH --cpus-per-gpu=8
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00
 #SBATCH --output=/ibex/project/c2229/multi_model/image_deblurring/MDPhysics/logs/log_test.out

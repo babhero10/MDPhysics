@@ -110,7 +110,7 @@ class DPTVisualizer:
             depth = predictions["depth"]
             if depth.ndim == 3:
                 depth = depth[0]
-            vis_items.append(("Depth", depth))
+            vis_items.append(("Input Depth", depth))
 
         if "motion" in predictions:
             motion = predictions["motion"]
@@ -145,7 +145,7 @@ class DPTVisualizer:
         axes_flat = axes.flatten()
 
         for idx, (title, vis) in enumerate(vis_items):
-            if title in ["Depth", "Linear Velocity", "Angular Velocity"]:
+            if title in ["Input Depth", "Depth", "Linear Velocity", "Angular Velocity"]:
                 im = axes_flat[idx].imshow(vis, cmap="magma")
                 fig.colorbar(im, ax=axes_flat[idx], fraction=0.046, pad=0.04)
             else:
@@ -171,7 +171,9 @@ class DPTVisualizer:
         return grid
 
 
-def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, device):
+def log_visualizations(
+    model, writer, epoch, blur_imgs, sharp_imgs, metrics, device, depth=None
+):
     """
     Custom visualization logger for MDPhysics model.
     Handles dictionary output and logs depth + motion field.
@@ -180,8 +182,10 @@ def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, dev
     with torch.no_grad():
         blur_imgs = blur_imgs.to(device)
         sharp_imgs = sharp_imgs.to(device)
+        if depth is not None:
+            depth = depth.to(device)
 
-        outputs = model(blur_imgs)
+        outputs = model(blur_imgs, depth=depth)
 
         # Loop over each image in the batch
         for i in range(blur_imgs.size(0)):
@@ -201,6 +205,10 @@ def log_visualizations(model, writer, epoch, blur_imgs, sharp_imgs, metrics, dev
                     if k == "sharp_image":
                         val = np.clip(val, 0.0, 1.0)
                     sample_preds[k] = val
+
+            # Add input depth to predictions for visualization
+            if depth is not None:
+                sample_preds["depth"] = depth[i].cpu().numpy()
 
             # Calculate metrics for this image (using Tensors)
             img_metrics = {}

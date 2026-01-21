@@ -582,10 +582,17 @@ class OverlapPatchEmbed(nn.Module):
             in_c, 2 * 3 * 3, kernel_size=3, stride=1, padding=1, bias=False
         )
 
-    def forward(self, x):
+    def forward(self, x, depth=None):
         out2 = self.conv_polar_fixed(x, self.polar_offset_conv)
         out1 = self.dcon_c(x)
         out2 = self.dconv(x, out2)
+
+        # Divide out1 by depth map if provided
+        if depth is not None:
+            # Clamp depth to avoid division by zero
+            depth = torch.clamp(depth, min=1e-6)
+            out1 = out1 / depth
+
         out = out1 + out2
         return out
 
@@ -863,7 +870,7 @@ class mdt(nn.Module):
             int(dim), out_channels, kernel_size=3, stride=1, padding=1, bias=bias
         )
 
-    def forward(self, inp_img, dist=None):
+    def forward(self, inp_img, dist=None, depth=None):
         if dist is None:
             dist = torch.zeros((inp_img.shape[0], 4), device=inp_img.device)
 
@@ -952,9 +959,11 @@ class mdt(nn.Module):
 
         if pad_h > 0 or pad_w > 0:
             inp_img = F.pad(inp_img, (0, pad_w, 0, pad_h), mode="reflect")
+            if depth is not None:
+                depth = F.pad(depth, (0, pad_w, 0, pad_h), mode="reflect")
 
         D_s, theta_max = self.patch_embed(inp_img, dist)
-        inp_enc_level1 = self.patch_embed0(inp_img)
+        inp_enc_level1 = self.patch_embed0(inp_img, depth=depth)
 
         if self.ape:
             inp_enc_level1 = inp_enc_level1 + self.absolute_pos_embed

@@ -131,6 +131,9 @@ def train_one_epoch(
     for batch in tqdm(train_loader, desc="Training", leave=False):
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
+        depth = batch.get("depth")
+        if depth is not None:
+            depth = depth.to(device)
         batch_size = blur.size(0)
 
         optimizer.zero_grad()
@@ -139,7 +142,7 @@ def train_one_epoch(
         targets = {"sharp_image": sharp}
 
         with torch.amp.autocast(device_type):  # Dynamic FP16 forward
-            pred = model(blur)
+            pred = model(blur, depth=depth)
             loss, loss_dict = criterion(pred, targets)
 
         # scale gradients
@@ -181,12 +184,15 @@ def validate(model, val_loader, criterion, device, metrics=None):
     for batch in tqdm(val_loader, desc="Validating", leave=False):
         blur = batch["blur"].to(device)
         sharp = batch["sharp"].to(device)
+        depth = batch.get("depth")
+        if depth is not None:
+            depth = depth.to(device)
         batch_size = blur.size(0)
 
         targets = {"sharp_image": sharp}
 
         with torch.amp.autocast(device_type):
-            pred = model(blur)
+            pred = model(blur, depth=depth)
             loss, loss_dict = criterion(pred, targets)
 
         # Accumulate losses (weighted by batch size)

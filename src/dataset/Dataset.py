@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from pathlib import Path
 import numpy as np
@@ -6,6 +7,7 @@ import lmdb
 from tqdm import tqdm
 from torch.utils.data import Dataset
 import hydra
+from transformers import AutoModelForDepthEstimation
 
 
 class LMDBDataset:
@@ -49,9 +51,24 @@ class BlurDataset(Dataset):
         self.__lmdb_env = LMDBDataset(self.__output_path)
         self.__split = split
 
-        self.transform = None
-        if split == "train" and "augmentations" in dataset_cfg:
-            self.transform = hydra.utils.instantiate(dataset_cfg.augmentations)
+        # Depth settings
+        self.__use_depth = dataset_cfg.get("use_depth", False)
+        self.__depth_model_repo = dataset_cfg.get(
+            "depth_model_repo", "depth-anything/Depth-Anything-V2-Small-hf"
+        )
+
+        # Separate spatial and color transforms
+        self.spatial_transform = None
+        self.color_transform = None
+        if split == "train":
+            if "spatial_augmentations" in dataset_cfg:
+                self.spatial_transform = hydra.utils.instantiate(
+                    dataset_cfg.spatial_augmentations
+                )
+            if "color_augmentations" in dataset_cfg:
+                self.color_transform = hydra.utils.instantiate(
+                    dataset_cfg.color_augmentations
+                )
 
         if not self.__check_downloaded():
             raise RuntimeError("Dataset not downloaded or corrupted")
@@ -97,6 +114,17 @@ class BlurDataset(Dataset):
 
         length = len(blur_files)
 
+        # Load depth model if use_depth is enabled
+        depth_model = None
+        if self.__use_depth:
+            print(f"Loading depth model: {self.__depth_model_repo}")
+            depth_model = AutoModelForDepthEstimation.from_pretrained(
+                self.__depth_model_repo
+            )
+            depth_model.eval()
+            if torch.cuda.is_available():
+                depth_model = depth_model.cuda()
+
         txn = self.__lmdb_env.get_env().begin(write=True)
         for idx, (b_path, s_path) in tqdm(
             enumerate(zip(blur_files, sharp_files)),
@@ -120,15 +148,48 @@ class BlurDataset(Dataset):
             txn.put(f"{idx}_blur".encode(), blur.tobytes())
             txn.put(f"{idx}_sharp".encode(), sharp.tobytes())
 
+            # Compute and store depth map if use_depth is enabled
+            if self.__use_depth and depth_model is not None:
+                depth = self.__compute_depth(blur, depth_model)
+                txn.put(f"{idx}_depth".encode(), depth.tobytes())
+
             if idx % 50 == 0:
                 txn.commit()
                 txn = self.__lmdb_env.get_env().begin(write=True)
 
         txn.put(b"__len__", str(length).encode())
+        txn.put(b"__use_depth__", b"1" if self.__use_depth else b"0")
         txn.put(b"__complete__", b"1")
 
         txn.commit()
         self.__lmdb_env.close()
+
+    def __compute_depth(self, blur_img: np.ndarray, depth_model) -> np.ndarray:
+        """Compute depth map from blur image using DepthAnythingV2."""
+        H, W = blur_img.shape[:2]
+
+        # Convert to tensor and normalize to [0, 1]
+        img_tensor = torch.tensor(blur_img).permute(2, 0, 1).float() / 255.0
+        img_tensor = img_tensor.unsqueeze(0)
+
+        if torch.cuda.is_available():
+            img_tensor = img_tensor.cuda()
+
+        with torch.no_grad():
+            depth_out = depth_model(pixel_values=img_tensor)
+            depth_map = depth_out.predicted_depth
+
+            # Interpolate to original size
+            depth_map = F.interpolate(
+                depth_map.unsqueeze(1),
+                size=(H, W),
+                mode="bilinear",
+                align_corners=False,
+            )
+            depth_map = depth_map.squeeze().cpu().numpy()
+
+        # Store as float32
+        return depth_map.astype(np.float32)
 
     def __ensure_env(self):
         if self.__lmdb_env.get_env() is None:
@@ -154,16 +215,48 @@ class BlurDataset(Dataset):
                 txn.get(f"{idx}_sharp".encode()), dtype=np.uint8
             ).reshape(shape)
 
-        if self.__split == "train" and self.transform:
-            augmented = self.transform(image=blur, sharp=sharp)
-            blur = augmented["image"]
-            sharp = augmented["sharp"]
+            # Load depth if available
+            depth = None
+            if self.__use_depth:
+                depth_bytes = txn.get(f"{idx}_depth".encode())
+                if depth_bytes is not None:
+                    depth = np.frombuffer(depth_bytes, dtype=np.float32).reshape(
+                        shape[:2]
+                    )
+                    # Convert depth to 3-channel for albumentations compatibility
+                    depth = np.stack([depth, depth, depth], axis=-1)
 
-        # Convert to float
+        if self.__split == "train":
+            # Apply spatial transforms to all (blur, sharp, depth)
+            if self.spatial_transform:
+                if depth is not None:
+                    augmented = self.spatial_transform(
+                        image=blur, sharp=sharp, depth=depth
+                    )
+                    depth = augmented["depth"]
+                else:
+                    augmented = self.spatial_transform(image=blur, sharp=sharp)
+                blur = augmented["image"]
+                sharp = augmented["sharp"]
+
+            # Apply color transforms only to blur and sharp (not depth)
+            if self.color_transform:
+                augmented = self.color_transform(image=blur, sharp=sharp)
+                blur = augmented["image"]
+                sharp = augmented["sharp"]
+
+        # Convert to float tensors
         blur = torch.tensor(np.transpose(blur, (2, 0, 1))).float().div_(255.0)
         sharp = torch.tensor(np.transpose(sharp, (2, 0, 1))).float().div_(255.0)
 
-        return {"blur": blur, "sharp": sharp}
+        result = {"blur": blur, "sharp": sharp}
+
+        # Convert depth to single-channel tensor
+        if depth is not None:
+            depth = torch.tensor(depth[:, :, 0]).float().unsqueeze(0)
+            result["depth"] = depth
+
+        return result
 
     def __len__(self):
         return self.__len

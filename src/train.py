@@ -64,6 +64,9 @@ def main(cfg: DictConfig):
 
     fixed_blur = fixed_batch["blur"][indices].to(device)
     fixed_sharp = fixed_batch["sharp"][indices].to(device)
+    fixed_depth = None
+    if "depth" in fixed_batch:
+        fixed_depth = fixed_batch["depth"][indices].to(device)
 
     # Instantiate model from 'arch' sub-config
     model = build_model(cfg, device)
@@ -168,7 +171,14 @@ def main(cfg: DictConfig):
 
             # Log visualizations
             log_visualizations(
-                model, writer, epoch + 1, fixed_blur, fixed_sharp, metrics, device
+                model,
+                writer,
+                epoch + 1,
+                fixed_blur,
+                fixed_sharp,
+                metrics,
+                device,
+                depth=fixed_depth,
             )
 
         if stop_training:

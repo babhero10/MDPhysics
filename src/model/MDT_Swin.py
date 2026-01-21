@@ -866,8 +866,12 @@ class mdt(nn.Module):
             ]
         )
 
-        self.fuse2 = Fuse(dim * 2, 2, patches_resolution, patch_size_val, num_heads)  # IMPROVED
-        self.fuse1 = Fuse(dim, 1, patches_resolution, patch_size_val, num_heads)  # IMPROVED
+        self.fuse2 = Fuse(
+            dim * 2, 2, patches_resolution, patch_size_val, num_heads
+        )  # IMPROVED
+        self.fuse1 = Fuse(
+            dim, 1, patches_resolution, patch_size_val, num_heads
+        )  # IMPROVED
         self.output = nn.Conv2d(
             int(dim), out_channels, kernel_size=3, stride=1, padding=1, bias=bias
         )
@@ -1012,12 +1016,12 @@ class mdt(nn.Module):
 # Wrapper class for compatibility with training pipeline
 class MDT_Swin(mdt):
     """MDT with Multi-Head Attention improvements (simplified version)
-    
+
     Key improvements over original MDT:
     1. Multi-head attention (8 heads instead of 1) for better feature representation
     2. Uses full-width windows (1, W) - same as original MDT
     3. Stable and works with any resolution at inference
-    
+
     Args:
         cfg: Configuration dictionary with keys:
             - img_size: Image size (default: 128)
@@ -1026,10 +1030,10 @@ class MDT_Swin(mdt):
             - num_blocks: Blocks per level (default: [6, 6, 12, 8])
             - Other standard MDT parameters
     """
+
     def __init__(self, cfg):
         super().__init__(cfg)
 
     def forward(self, x):
         out_list = super().forward(x, dist=None)
         return {"sharp_image": out_list[0]}
-
