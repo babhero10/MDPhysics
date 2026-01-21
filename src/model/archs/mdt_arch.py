@@ -33,10 +33,20 @@ class DConv(nn.Module):
             padding=padding,
             bias=bias,
         )
+        # Learnable mask for DeformConv2d
+        self.mask_conv = nn.Conv2d(
+            inplanes,
+            kernel_size * kernel_size,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            bias=bias,
+        )
 
     def forward(self, x):
-        out = self.conv1(x)
-        out = self.conv2(x, out)
+        offset = self.conv1(x)
+        mask = torch.sigmoid(self.mask_conv(x))
+        out = self.conv2(x, offset, mask)
         return out
 
 
@@ -582,10 +592,17 @@ class OverlapPatchEmbed(nn.Module):
             in_c, 2 * 3 * 3, kernel_size=3, stride=1, padding=1, bias=False
         )
 
+        # Learnable mask for DeformConv2d (kernel_size * kernel_size = 9)
+        self.mask_conv = nn.Conv2d(
+            in_c, 3 * 3, kernel_size=3, stride=1, padding=1, bias=False
+        )
+
     def forward(self, x, depth=None):
         out2 = self.conv_polar_fixed(x, self.polar_offset_conv)
         out1 = self.dcon_c(x)
-        out2 = self.dconv(x, out2)
+        # Learn mask and apply sigmoid to keep values in [0, 1]
+        mask = torch.sigmoid(self.mask_conv(x))
+        out2 = self.dconv(x, out2, mask)
 
         # Multiply out1 by normalized depth map if provided
         if depth is not None:
