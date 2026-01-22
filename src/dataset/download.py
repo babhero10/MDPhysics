@@ -260,11 +260,23 @@ def split_train_val(cfg):
 
     logger.info(f"Moving {num_val} images from train to val for modes: {modes}")
 
+    # For RealBlur, filenames differ between modes (gt_X.png vs blur_X.png)
+    is_realblur = cfg.get("dataset_type") == "realblur"
+
     # Move validation images for ALL modes
     for filename in val_filenames:
         for mode in modes:
-            src_path = train_dir / mode / filename
-            dst_path = val_dir / mode / filename
+            # For RealBlur, convert filename between gt/blur naming
+            if is_realblur:
+                if mode == "blur":
+                    mode_filename = filename.replace("_gt_", "_blur_")
+                else:  # sharp
+                    mode_filename = filename
+            else:
+                mode_filename = filename
+
+            src_path = train_dir / mode / mode_filename
+            dst_path = val_dir / mode / mode_filename
 
             if src_path.exists():
                 shutil.move(str(src_path), str(dst_path))

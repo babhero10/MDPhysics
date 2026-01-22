@@ -20,7 +20,7 @@ src_root: ../datasets/RealBlur
 dst_root: data/RealBlur-R/raw
 
 # Validation split ratio
-val_split: 0.1
+val_split: 0.0125
 seed: 42
 
 # List files for each split (relative to src_root)
