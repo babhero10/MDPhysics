@@ -604,13 +604,16 @@ class OverlapPatchEmbed(nn.Module):
         mask = torch.sigmoid(self.mask_conv(x))
         out2 = self.dconv(x, out2, mask)
 
-        # Multiply out1 by normalized depth map if provided
+        # Modulate out1 by disparity (inverse depth) if provided
+        # DepthAnythingV2 outputs disparity: close=high (~1), far=low (~0)
+        # We want: close objects -> more out1, far objects -> less out1
+        # So multiply by disparity directly
         if depth is not None:
-            # Normalize depth to [0.5, 1.5] range to avoid zeroing out features
+            # Normalize disparity to [0.5, 1.5] range for numerical stability
             depth_min = depth.amin(dim=(1, 2, 3), keepdim=True)
             depth_max = depth.amax(dim=(1, 2, 3), keepdim=True)
             depth_normalized = (depth - depth_min) / (depth_max - depth_min + 1e-6)
-            # Scale to [0.5, 1.5] instead of [0, 1] for numerical stability
+            # Scale to [0.5, 1.5]: close ~1.5, far ~0.5
             depth_normalized = depth_normalized + 0.5
             out1 = out1 * depth_normalized
 

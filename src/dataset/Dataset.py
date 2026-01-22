@@ -22,7 +22,7 @@ class LMDBDataset:
         if write:
             self.__env = lmdb.open(
                 self.__path,
-                map_size=12 * 1024**3,
+                map_size=24 * 1024**3,
                 subdir=True,
                 readonly=False,
                 lock=True,
@@ -57,6 +57,12 @@ class BlurDataset(Dataset):
             "depth_model_repo", "depth-anything/Depth-Anything-V2-Small-hf"
         )
 
+        # RAW image settings (for RealBlur-R)
+        self.__is_raw = dataset_cfg.get("is_raw", False)
+
+        # Configurable splits to check (default: train, val, test)
+        self.__expected_splits = dataset_cfg.get("expected_splits", ["train", "val", "test"])
+
         # Separate spatial and color transforms
         self.spatial_transform = None
         self.color_transform = None
@@ -86,6 +92,30 @@ class BlurDataset(Dataset):
     def __load_image(self, path: Path) -> np.ndarray:
         img = Image.open(path).convert("RGB")
         img = np.asarray(img, dtype=np.uint8)
+
+        # Apply RAW preprocessing if enabled (for RealBlur-R)
+        if self.__is_raw:
+            img = self.__preprocess_raw(img)
+
+        return img
+
+    def __preprocess_raw(self, img: np.ndarray) -> np.ndarray:
+        """
+        Preprocess RAW/linear images (e.g., RealBlur-R).
+        Applies simple gamma correction to convert from linear to sRGB space.
+        """
+        # Convert to float [0, 1]
+        img_float = img.astype(np.float32) / 255.0
+
+        # Apply gamma correction (linear to sRGB)
+        # sRGB uses gamma ~2.2, but the standard formula is:
+        # if x <= 0.0031308: 12.92 * x
+        # else: 1.055 * x^(1/2.4) - 0.055
+        gamma = 2.2
+        img_float = np.power(np.clip(img_float, 0, 1), 1.0 / gamma)
+
+        # Convert back to uint8
+        img = (img_float * 255.0).astype(np.uint8)
         return img
 
     def __process(self):
@@ -266,13 +296,13 @@ class BlurDataset(Dataset):
             self.__lmdb_env.close()
 
     def __check_downloaded(self) -> bool:
-        gopro_root = self.__raw_path
-        if not gopro_root.is_dir():
+        root = self.__raw_path
+        if not root.is_dir():
             return False
 
-        for split in ["train", "val", "test"]:
-            blur_dir = gopro_root / split / "blur"
-            sharp_dir = gopro_root / split / "sharp"
+        for split in self.__expected_splits:
+            blur_dir = root / split / "blur"
+            sharp_dir = root / split / "sharp"
 
             if not blur_dir.is_dir():
                 return False

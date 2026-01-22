@@ -1,0 +1,37 @@
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false
+
+# Dataset type for choosing the correct flatten function
+dataset_type: realblur
+
+# Download settings (same URL for both J and R - they're in the same archive)
+download: false
+download_url: "https://drive.google.com/uc?id=17v5Dj0M2WExgxJgsGpEWc-6UyhK1IWWK"
+download_path: ../datasets/RealBlur/RealBlur.zip
+
+# Source: where RealBlur dataset is located (after extraction)
+src_root: ../datasets/RealBlur
+
+# Destination: where to store the reorganized dataset
+dst_root: data/RealBlur-R/raw
+
+# Validation split ratio
+val_split: 0.1
+seed: 42
+
+# List files for each split (relative to src_root)
+list_files:
+  train: RealBlur_R_train_list.txt
+  test: RealBlur_R_test_list.txt
+
+# Mode mapping: map source folder names to destination names
+mode_mapping:
+  gt: sharp
+  blur: blur
+
+# Copy files instead of moving
+copy: true

@@ -1,0 +1,39 @@
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false
+
+# Dataset type for choosing the correct flatten function
+dataset_type: gopro
+
+# Download settings
+download: false
+download_url: "https://drive.google.com/file/d/1y4wvPdOG3mojpFCHTqLgriexhbjoWVkK/view"
+download_path: ../datasets/GOPRO_Large.zip
+
+# Source: where GoPro dataset is located (after extraction)
+src_root: ../datasets/GOPRO_Large
+
+# Destination: where to store the reorganized dataset
+dst_root: data/GoPro/raw
+
+# Validation split ratio
+val_split: 0.025
+seed: 42
+
+# Splits and modes to process
+splits:
+  - train
+  - test
+
+modes:
+  - blur
+  - sharp
+
+ignore:
+  - blur_gamma
+
+# Copy files instead of moving
+copy: true
