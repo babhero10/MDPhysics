@@ -3,8 +3,8 @@ defaults:
   - dataset: gopro_test
   - model: mdt_edited
   - metrics: test
-  - logger: gopro_test
-  - train: gopro_test
+  - logger: test
+  - train: test
 
 device: "cuda:0"
 seed: 42

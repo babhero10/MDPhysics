@@ -1,0 +1,3 @@
+batch_size: 1
+
+last_checkpoint: 'outputs/mdt_edited/train/2026-01-22_09-27-55/checkpoints/best_model_epoch32.pt'

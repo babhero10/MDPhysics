@@ -1,0 +1,4 @@
+src_root: ${hydra:runtime.cwd}/data/RealBlur-R/raw
+dst_root: ${hydra:runtime.cwd}/data/RealBlur-R/processed
+patch_size: 128
+num_workers: 8
