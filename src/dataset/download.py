@@ -5,6 +5,7 @@ import hydra
 from omegaconf import DictConfig
 import logging
 import random
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +86,10 @@ def flatten_dataset(cfg):
             dst_mode = mode_mapping.get(mode, mode)
             (dst_split / dst_mode).mkdir(parents=True, exist_ok=True)
 
-        for seq_dir in src_split.iterdir():
-            if not seq_dir.is_dir():
-                continue
+        # Count total files for progress bar
+        seq_dirs = [d for d in src_split.iterdir() if d.is_dir()]
 
+        for seq_dir in tqdm(seq_dirs, desc=f"Processing {split}"):
             seq_name = seq_dir.name
 
             for mode in cfg.modes:
@@ -145,12 +146,11 @@ def flatten_realblur(cfg):
         for src_mode, dst_mode in mode_mapping.items():
             (dst_split / dst_mode).mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Processing {split} split from {list_file}...")
-
         with open(list_path, "r") as f:
             lines = f.readlines()
 
-        for line in lines:
+        processed = 0
+        for line in tqdm(lines, desc=f"Processing {split}"):
             line = line.strip()
             if not line:
                 continue
@@ -173,18 +173,19 @@ def flatten_realblur(cfg):
                 logger.warning(f"Blur file not found: {blur_path}")
                 continue
 
-            # Extract scene name and image name for unique naming
-            # e.g., RealBlur-R_.../scene183/gt/gt_7.png -> scene183_gt_7.png
+            # Extract scene name and image number for unique naming
+            # e.g., RealBlur-R_.../scene183/gt/gt_7.png -> scene183_7.png
+            # Both gt and blur get the SAME filename so Dataset.py can match them
             scene_name = gt_path.parent.parent.name
-            img_name = gt_path.name
+            # Extract number from filename: gt_7.png -> 7.png
+            img_num = gt_path.name.replace("gt_", "")
 
-            # Create unique filename
-            new_gt_name = f"{scene_name}_{img_name}"
-            new_blur_name = f"{scene_name}_{blur_path.name}"
+            # Create consistent filename for both (same name in both folders)
+            common_name = f"{scene_name}_{img_num}"
 
             # Destination paths
-            dst_gt = dst_split / mode_mapping.get("gt", "sharp") / new_gt_name
-            dst_blur = dst_split / mode_mapping.get("blur", "blur") / new_blur_name
+            dst_gt = dst_split / mode_mapping.get("gt", "sharp") / common_name
+            dst_blur = dst_split / mode_mapping.get("blur", "blur") / common_name
 
             if cfg.copy:
                 shutil.copy2(gt_path, dst_gt)
@@ -193,7 +194,9 @@ def flatten_realblur(cfg):
                 shutil.move(str(gt_path), str(dst_gt))
                 shutil.move(str(blur_path), str(dst_blur))
 
-        logger.info(f"Processed {len(lines)} pairs for {split} split")
+            processed += 1
+
+        logger.info(f"Processed {processed} pairs for {split} split")
 
 
 def split_train_val(cfg):
@@ -225,9 +228,11 @@ def split_train_val(cfg):
 
     # Get the actual mode names in destination (after mapping for RealBlur)
     mode_mapping = cfg.get("mode_mapping", {})
-    if cfg.get("dataset_type") == "realblur":
+    is_realblur = cfg.get("dataset_type") == "realblur"
+    if is_realblur:
         # For RealBlur, use the mapped names (sharp, blur)
-        modes = list(set(mode_mapping.values()))
+        # Use sharp as reference since it has gt naming convention
+        modes = ["sharp", "blur"]
     else:
         # For GoPro, use the original modes
         modes = list(cfg.modes)
@@ -236,9 +241,8 @@ def split_train_val(cfg):
     for mode in modes:
         (val_dir / mode).mkdir(parents=True, exist_ok=True)
 
-    # Use the first mode to determine the list of files
-    first_mode = modes[0]
-    ref_train_dir = train_dir / first_mode
+    # Use sharp/first mode as reference for determining file list
+    ref_train_dir = train_dir / modes[0]
 
     if not ref_train_dir.exists():
         logger.error(f"Reference mode directory {ref_train_dir} doesn't exist")
@@ -258,25 +262,12 @@ def split_train_val(cfg):
     num_val = int(len(images) * val_split)
     val_filenames = images[:num_val]
 
-    logger.info(f"Moving {num_val} images from train to val for modes: {modes}")
-
-    # For RealBlur, filenames differ between modes (gt_X.png vs blur_X.png)
-    is_realblur = cfg.get("dataset_type") == "realblur"
-
     # Move validation images for ALL modes
-    for filename in val_filenames:
+    # Now both RealBlur and GoPro use consistent filenames across modes
+    for filename in tqdm(val_filenames, desc="Moving to val"):
         for mode in modes:
-            # For RealBlur, convert filename between gt/blur naming
-            if is_realblur:
-                if mode == "blur":
-                    mode_filename = filename.replace("_gt_", "_blur_")
-                else:  # sharp
-                    mode_filename = filename
-            else:
-                mode_filename = filename
-
-            src_path = train_dir / mode / mode_filename
-            dst_path = val_dir / mode / mode_filename
+            src_path = train_dir / mode / filename
+            dst_path = val_dir / mode / filename
 
             if src_path.exists():
                 shutil.move(str(src_path), str(dst_path))
