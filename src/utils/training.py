@@ -117,6 +117,7 @@ def train_one_epoch(
     device,
     scaler,
     metrics=None,
+    grad_clip_norm=None,
 ):
     model.train()
 
@@ -147,6 +148,12 @@ def train_one_epoch(
 
         # scale gradients
         scaler.scale(loss).backward()
+
+        # Gradient clipping to prevent exploding gradients
+        if grad_clip_norm is not None:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+
         scaler.step(optimizer)
         scaler.update()
 

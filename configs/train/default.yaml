@@ -21,9 +21,14 @@ optimizer:
   weight_decay: ${train.weight_decay}
 
 scheduler:
-  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  _target_: utils.schedulers.CosineAnnealingWarmupLR
   T_max: ${train.epochs}
-  eta_min: 0.000001  # 1e-6 minimum learning rate for smooth convergence
+  eta_min: 0.000001      # 1e-6 minimum learning rate
+  warmup_epochs: 10      # Linear warmup for first 10 epochs
+  warmup_lr: 0.000001    # Start warmup from 1e-6
+
+# Gradient clipping to prevent exploding gradients
+grad_clip_norm: 1.0
 
 checkpoint:
   dir: ${hydra:runtime.output_dir}/checkpoints

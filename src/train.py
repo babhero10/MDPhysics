@@ -115,6 +115,7 @@ def main(cfg: DictConfig):
             device,
             scaler,
             metrics,
+            grad_clip_norm=cfg.train.get("grad_clip_norm"),
         )
 
         logger.info(f"Epoch {epoch + 1} | Validating...")
