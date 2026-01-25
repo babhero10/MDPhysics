@@ -12,7 +12,7 @@ criterion:
       loss:
         _target_: utils.losses.CombinedMDTLoss
         l1_weight: 1.0
-        fft_weight: 0.15
+        fft_weight: 0.1
         reduction: mean
 
 optimizer:
@@ -28,7 +28,7 @@ scheduler:
   warmup_lr: 0.000001    # Start warmup from 1e-6
 
 # Gradient clipping to prevent exploding gradients
-grad_clip_norm: 1.0
+grad_clip_norm: 0.5
 
 checkpoint:
   dir: ${hydra:runtime.output_dir}/checkpoints

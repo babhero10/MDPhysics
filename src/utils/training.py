@@ -157,6 +157,11 @@ def train_one_epoch(
         scaler.step(optimizer)
         scaler.update()
 
+        # Monitor for scaler instability
+        if scaler.get_scale() < 1:
+            import logging
+            logging.getLogger(__name__).warning(f"Scaler scale very low: {scaler.get_scale()}")
+
         # Accumulate losses (weighted by batch size)
         for k, v in loss_dict.items():
             current = running_loss_dict.get(k, 0.0)
