@@ -1,0 +1,14 @@
+defaults:
+  - _self_
+  - dataset: gopro_test
+  - model: mdt_edited
+  - metrics: test
+  - logger: test
+  - train: test
+
+device: "cuda:0"
+seed: 42
+
+hydra:
+  run:
+    dir: outputs/${model.name}/web/${now:%Y-%m-%d_%H-%M-%S}

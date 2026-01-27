@@ -3,23 +3,10 @@ Standalone prediction script for image deblurring.
 
 Example usage:
     # Single image
-    python src/predict.py \
-        --input /path/to/blur.jpg \
-        --output /path/to/output/ \
-        --checkpoint outputs/mdt_edited/.../best_model_epoch493.pt
+    python src/predict.py --input /path/to/blur.jpg --output /path/to/output/
 
     # Folder of images
-    python src/predict.py \
-        --input /path/to/blur_folder/ \
-        --output /path/to/output/ \
-        --checkpoint outputs/mdt_edited/.../best_model_epoch493.pt
-
-    # With depth estimation
-    python src/predict.py \
-        --input /path/to/blur_folder/ \
-        --output /path/to/output/ \
-        --checkpoint outputs/mdt_edited/.../best_model_epoch493.pt \
-        --use-depth
+    python src/predict.py --input /path/to/blur_folder/ --output /path/to/output/
 """
 
 import argparse
@@ -28,7 +15,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
-from omegaconf import OmegaConf
 from PIL import Image
 from tqdm import tqdm
 
@@ -36,25 +22,40 @@ from tqdm import tqdm
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 
 
-def load_model(config_path: str, checkpoint_path: str, device: torch.device):
-    """Load model from config and checkpoint."""
-    from hydra.utils import instantiate
+def load_config(config_path: str = "configs/web.yaml"):
+    """Load config using Hydra compose."""
+    from hydra import compose, initialize_config_dir
+    from hydra.core.global_hydra import GlobalHydra
 
-    cfg = OmegaConf.load(config_path)
+    config_path = Path(config_path).resolve()
+    config_dir = str(config_path.parent)
+    config_name = config_path.stem
 
-    # Handle img_size interpolation - set a default if not resolved
-    if OmegaConf.is_missing(cfg, "arch.cfg.img_size"):
-        OmegaConf.update(cfg, "arch.cfg.img_size", 256)
-    elif "${" in str(OmegaConf.select(cfg, "arch.cfg.img_size", default="")):
-        # img_size references dataset.patch_size which isn't available standalone
-        OmegaConf.update(cfg, "arch.cfg.img_size", 256)
+    GlobalHydra.instance().clear()
+    with initialize_config_dir(config_dir=config_dir, version_base=None):
+        cfg = compose(config_name=config_name)
+    return cfg
 
-    model = instantiate(cfg.arch).to(device)
-    model.load_state_dict(
-        torch.load(checkpoint_path, weights_only=True, map_location=device)
-    )
+
+def load_models(cfg, device: torch.device):
+    """Load deblur model and optionally depth model from config."""
+    from omegaconf import OmegaConf
+    from src.utils.training import build_model
+
+    # Build and load deblur model
+    model = build_model(cfg, device)
     model.eval()
-    return model
+
+    # Load depth model if enabled in config (check dataset or model config)
+    depth_model = None
+    use_depth = OmegaConf.select(cfg, "dataset.use_depth", default=False)
+    if use_depth:
+        depth_repo = OmegaConf.select(
+            cfg, "dataset.depth_model_repo", default="depth-anything/Depth-Anything-V2-Large-hf"
+        )
+        depth_model = load_depth_model(device, depth_repo)
+
+    return model, depth_model
 
 
 def load_depth_model(device: torch.device, model_repo: str = None):
@@ -88,7 +89,6 @@ def compute_depth(image_tensor: torch.Tensor, depth_model, device: torch.device)
         depth_out = depth_model(pixel_values=image_tensor)
         depth_map = depth_out.predicted_depth
 
-        # Interpolate to original size
         depth_map = F.interpolate(
             depth_map.unsqueeze(1),
             size=(H, W),
@@ -137,21 +137,17 @@ def predict_single(
     """Run prediction on single image."""
     device_type = "cuda" if device.type == "cuda" else "cpu"
 
-    # Load and preprocess
     input_tensor = preprocess_image(image_path, device)
 
-    # Compute depth if model provided
     depth = None
     if depth_model is not None:
         depth = compute_depth(input_tensor, depth_model, device)
 
-    # Run inference
     with torch.no_grad():
         with torch.amp.autocast(device_type):
             output = model(input_tensor, depth=depth)
             pred = torch.clamp(output["sharp_image"], 0.0, 1.0)
 
-    # Save output
     output_image = postprocess_output(pred)
     output_image.save(output_path)
 
@@ -194,68 +190,29 @@ def main():
         required=True,
         help="Output directory for deblurred images",
     )
-    parser.add_argument(
-        "--checkpoint",
-        "-c",
-        type=Path,
-        required=True,
-        help="Path to model checkpoint .pt file",
-    )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=Path("configs/model/mdt_edited.yaml"),
-        help="Path to config file (default: configs/model/mdt_edited.yaml)",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda",
-        choices=["cuda", "cpu"],
-        help="Device to use (default: cuda)",
-    )
-    parser.add_argument(
-        "--use-depth",
-        action="store_true",
-        help="Enable depth estimation with DepthAnything-V2",
-    )
-    parser.add_argument(
-        "--depth-model",
-        type=str,
-        default=None,
-        help="HuggingFace repo for depth model (default: depth-anything/Depth-Anything-V2-Large-hf)",
-    )
 
     args = parser.parse_args()
 
-    # Validate inputs
     if not args.input.exists():
         raise FileNotFoundError(f"Input path not found: {args.input}")
-    if not args.checkpoint.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
-    if not args.config.exists():
-        raise FileNotFoundError(f"Config file not found: {args.config}")
 
-    # Setup device
-    if args.device == "cuda" and not torch.cuda.is_available():
+    # Load config
+    cfg = load_config()
+
+    # Setup device from config
+    device = torch.device(cfg.device)
+    if "cuda" in cfg.device and not torch.cuda.is_available():
         print("CUDA not available, falling back to CPU")
         device = torch.device("cpu")
-    else:
-        device = torch.device(args.device)
 
     print(f"Using device: {device}")
 
     # Create output directory
     args.output.mkdir(parents=True, exist_ok=True)
 
-    # Load model
-    print(f"Loading model from {args.checkpoint}")
-    model = load_model(str(args.config), str(args.checkpoint), device)
-
-    # Load depth model if requested
-    depth_model = None
-    if args.use_depth:
-        depth_model = load_depth_model(device, args.depth_model)
+    # Load models from config
+    print("Loading models...")
+    model, depth_model = load_models(cfg, device)
 
     # Get image files
     image_files = get_image_files(args.input)
@@ -278,7 +235,6 @@ def main():
             print(f"\nError processing {image_path.name}: {e}")
             failed += 1
 
-    # Print summary
     print(f"\nProcessing complete!")
     print(f"  Successful: {successful}")
     print(f"  Failed: {failed}")

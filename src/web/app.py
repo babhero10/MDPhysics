@@ -2,98 +2,74 @@
 FastAPI web application for image deblurring.
 
 Usage:
-    export MODEL_CHECKPOINT=outputs/mdt_edited/.../best_model_epoch493.pt
     uvicorn src.web.app:app --host 0.0.0.0 --port 8000
 """
 
 import base64
 import io
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from omegaconf import OmegaConf
 from PIL import Image
 from starlette.requests import Request
 
-# Import from predict.py
-from src.predict import load_model, load_depth_model, compute_depth, postprocess_output
+from src.predict import load_config, load_models, compute_depth, postprocess_output
 
 # Global state for loaded models
-models = {
-    "deblur": None,
-    "depth": None,
+state = {
+    "model": None,
+    "depth_model": None,
     "device": None,
-    "config": None,
+    "cfg": None,
 }
-
-
-def get_config():
-    """Get configuration from environment variables."""
-    return {
-        "checkpoint": os.environ.get("MODEL_CHECKPOINT"),
-        "config": os.environ.get("MODEL_CONFIG", "configs/model/mdt_edited.yaml"),
-        "device": os.environ.get("DEVICE", "cuda" if torch.cuda.is_available() else "cpu"),
-        "enable_depth": os.environ.get("ENABLE_DEPTH", "false").lower() == "true",
-    }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load models at startup."""
-    config = get_config()
-
-    if not config["checkpoint"]:
-        print("WARNING: MODEL_CHECKPOINT not set. Model will not be loaded.")
-        print("Set MODEL_CHECKPOINT environment variable to enable deblurring.")
+    try:
+        cfg = load_config()
+    except Exception as e:
+        print(f"WARNING: Failed to load config: {e}")
         yield
         return
 
-    checkpoint_path = Path(config["checkpoint"])
-    if not checkpoint_path.exists():
-        print(f"WARNING: Checkpoint not found: {checkpoint_path}")
-        yield
-        return
-
-    config_path = Path(config["config"])
-    if not config_path.exists():
-        print(f"WARNING: Config not found: {config_path}")
-        yield
-        return
-
-    # Setup device
-    device = torch.device(config["device"])
-    if config["device"] == "cuda" and not torch.cuda.is_available():
+    # Setup device from config
+    device = torch.device(cfg.device)
+    if "cuda" in cfg.device and not torch.cuda.is_available():
         print("CUDA not available, falling back to CPU")
         device = torch.device("cpu")
 
     print(f"Using device: {device}")
-    models["device"] = device
-    models["config"] = config
+    state["device"] = device
+    state["cfg"] = cfg
 
-    # Load deblurring model
-    print(f"Loading deblur model from {checkpoint_path}")
-    models["deblur"] = load_model(str(config_path), str(checkpoint_path), device)
-    print("Deblur model loaded successfully")
-
-    # Load depth model if enabled
-    if config["enable_depth"]:
-        print("Loading depth model...")
-        models["depth"] = load_depth_model(device)
-        print("Depth model loaded successfully")
+    # Load models
+    print("Loading models...")
+    try:
+        model, depth_model = load_models(cfg, device)
+        state["model"] = model
+        state["depth_model"] = depth_model
+        print("Models loaded successfully")
+    except Exception as e:
+        print(f"WARNING: Failed to load models: {e}")
+        yield
+        return
 
     yield
 
     # Cleanup
-    models["deblur"] = None
-    models["depth"] = None
-    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    state["model"] = None
+    state["depth_model"] = None
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 app = FastAPI(
@@ -115,14 +91,17 @@ templates = Jinja2Templates(directory=WEB_DIR / "templates")
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Serve the main page."""
-    config = get_config()
+    use_depth = False
+    if state["cfg"]:
+        use_depth = OmegaConf.select(state["cfg"], "dataset.use_depth", default=False)
+
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "model_loaded": models["deblur"] is not None,
-            "depth_available": models["depth"] is not None,
-            "depth_enabled": config.get("enable_depth", False),
+            "model_loaded": state["model"] is not None,
+            "depth_available": state["depth_model"] is not None,
+            "depth_enabled": use_depth,
         },
     )
 
@@ -130,15 +109,20 @@ async def index(request: Request):
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    config = get_config()
+    use_depth = False
+    checkpoint = None
+    if state["cfg"]:
+        use_depth = OmegaConf.select(state["cfg"], "dataset.use_depth", default=False)
+        checkpoint = OmegaConf.select(state["cfg"], "train.last_checkpoint", default=None)
+
     return {
         "status": "ok",
-        "model_loaded": models["deblur"] is not None,
-        "depth_available": models["depth"] is not None,
-        "device": str(models["device"]) if models["device"] else None,
+        "model_loaded": state["model"] is not None,
+        "depth_available": state["depth_model"] is not None,
+        "device": str(state["device"]) if state["device"] else None,
         "config": {
-            "checkpoint": config["checkpoint"],
-            "enable_depth": config["enable_depth"],
+            "checkpoint": checkpoint,
+            "use_depth": use_depth,
         },
     }
 
@@ -175,41 +159,34 @@ async def deblur(
     Returns:
         JSON with base64-encoded original and deblurred images
     """
-    if models["deblur"] is None:
+    if state["model"] is None:
         raise HTTPException(
             status_code=503,
-            detail="Model not loaded. Set MODEL_CHECKPOINT environment variable and restart server.",
+            detail="Model not loaded. Check config and restart server.",
         )
 
-    # Validate file type
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
     try:
-        # Read image bytes
         image_bytes = await file.read()
 
-        # Preprocess
-        device = models["device"]
+        device = state["device"]
         input_tensor = preprocess_image_bytes(image_bytes, device)
 
-        # Compute depth if requested and available
         depth = None
-        if use_depth and models["depth"] is not None:
-            depth = compute_depth(input_tensor, models["depth"], device)
+        if use_depth and state["depth_model"] is not None:
+            depth = compute_depth(input_tensor, state["depth_model"], device)
 
-        # Run inference
         device_type = "cuda" if device.type == "cuda" else "cpu"
         with torch.no_grad():
             with torch.amp.autocast(device_type):
-                output = models["deblur"](input_tensor, depth=depth)
+                output = state["model"](input_tensor, depth=depth)
                 pred = torch.clamp(output["sharp_image"], 0.0, 1.0)
 
-        # Convert to images
         original_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         deblurred_image = postprocess_output(pred)
 
-        # Encode as base64
         original_b64 = image_to_base64(original_image)
         deblurred_b64 = image_to_base64(deblurred_image)
 
@@ -217,7 +194,7 @@ async def deblur(
             "success": True,
             "original": f"data:image/png;base64,{original_b64}",
             "deblurred": f"data:image/png;base64,{deblurred_b64}",
-            "used_depth": use_depth and models["depth"] is not None,
+            "used_depth": use_depth and state["depth_model"] is not None,
         })
 
     except Exception as e:
