@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Deblurring</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Image Deblurring</h1>
+            <p class="subtitle">Upload a blurry image to restore clarity</p>
+            {% if not model_loaded %}
+            <div class="warning">
+                Model not loaded. Set MODEL_CHECKPOINT and restart server.
+            </div>
+            {% endif %}
+        </header>
+
+        <main>
+            <div class="upload-section">
+                <div id="dropzone" class="dropzone">
+                    <div class="dropzone-content">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17,8 12,3 7,8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <p>Drag & drop an image here</p>
+                        <p class="small">or click to select</p>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                </div>
+
+                <div class="options">
+                    {% if depth_available %}
+                    <label class="toggle">
+                        <input type="checkbox" id="depthToggle" {% if depth_enabled %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Use depth estimation</span>
+                    </label>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Processing image...</p>
+            </div>
+
+            <div id="results" class="results hidden">
+                <h2>Results</h2>
+                <div class="comparison">
+                    <div class="image-container">
+                        <h3>Original</h3>
+                        <img id="originalImage" alt="Original image">
+                    </div>
+                    <div class="image-container">
+                        <h3>Deblurred</h3>
+                        <img id="deblurredImage" alt="Deblurred image">
+                    </div>
+                </div>
+                <div class="actions">
+                    <button id="downloadBtn" class="btn btn-primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download Result
+                    </button>
+                    <button id="newImageBtn" class="btn btn-secondary">
+                        Process Another
+                    </button>
+                </div>
+            </div>
+
+            <div id="error" class="error hidden">
+                <p id="errorMessage"></p>
+                <button id="retryBtn" class="btn btn-secondary">Try Again</button>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by deep learning</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
