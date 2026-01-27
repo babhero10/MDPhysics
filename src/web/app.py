@@ -5,10 +5,17 @@ Usage:
     uvicorn src.web.app:app --host 0.0.0.0 --port 8000
 """
 
+import sys
+from pathlib import Path
+
+# Add src to path so Hydra can find model.MDT_Edited
+SRC_DIR = Path(__file__).parent.parent
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 import base64
 import io
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import numpy as np
 import torch
