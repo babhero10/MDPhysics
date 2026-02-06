@@ -37,9 +37,18 @@ class FFTLoss(nn.Module):
         self.reduction = reduction
 
     def forward(self, pred, target):
+        # Ensure FP32 for FFT operations
         pred_fft = torch.fft.fft2(pred.float(), dim=(-2, -1))
-        pred_fft = torch.stack([pred_fft.real, pred_fft.imag], dim=-1)
         target_fft = torch.fft.fft2(target.float(), dim=(-2, -1))
+
+        # Normalize by image size to prevent huge coefficient magnitudes
+        # (DC component can be 100x larger than high-freq, causing instability)
+        norm_factor = pred.size(-2) * pred.size(-1)
+        pred_fft = pred_fft / norm_factor
+        target_fft = target_fft / norm_factor
+
+        # Stack real and imaginary parts
+        pred_fft = torch.stack([pred_fft.real, pred_fft.imag], dim=-1)
         target_fft = torch.stack([target_fft.real, target_fft.imag], dim=-1)
 
         loss = torch.nn.functional.l1_loss(

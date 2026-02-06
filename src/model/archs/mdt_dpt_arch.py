@@ -310,7 +310,7 @@ class BiasFree_LayerNorm(nn.Module):
 
     def forward(self, x):
         sigma = x.var(-1, keepdim=True, unbiased=False)
-        return x / torch.sqrt(sigma + 1e-5) * self.weight
+        return x / torch.sqrt(sigma + 1e-4) * self.weight  # Increased from 1e-5 for FP16 stability
 
 
 class WithBias_LayerNorm(nn.Module):
@@ -329,7 +329,7 @@ class WithBias_LayerNorm(nn.Module):
     def forward(self, x):
         mu = x.mean(-1, keepdim=True)
         sigma = x.var(-1, keepdim=True, unbiased=False)
-        return (x - mu) / torch.sqrt(sigma + 1e-5) * self.weight + self.bias
+        return (x - mu) / torch.sqrt(sigma + 1e-4) * self.weight + self.bias  # Increased from 1e-5 for FP16 stability
 
 
 class LayerNorm(nn.Module):
@@ -382,9 +382,13 @@ class DFFN(nn.Module):
             patch1=self.patch_size,
             patch2=self.patch_size,
         )
-        x_patch_fft = torch.fft.rfft2(x_patch.float())
-        x_patch_fft = x_patch_fft * self.fft
-        x_patch = torch.fft.irfft2(x_patch_fft, s=(self.patch_size, self.patch_size))
+        # Convert to FP32 before FFT to prevent FP16 underflow
+        x_patch = x_patch.float()
+        # Disable autocast for FFT operations to prevent FP16 instability
+        with torch.amp.autocast(device_type='cuda', enabled=False):
+            x_patch_fft = torch.fft.rfft2(x_patch)
+            x_patch_fft = x_patch_fft * self.fft
+            x_patch = torch.fft.irfft2(x_patch_fft, s=(self.patch_size, self.patch_size))
         x = rearrange(
             x_patch,
             "b c h w patch1 patch2 -> b c (h patch1) (w patch2)",
@@ -436,11 +440,16 @@ class FSAS(nn.Module):
             patch1=self.patch_size,
             patch2=self.patch_size,
         )
-        q_fft = torch.fft.rfft2(q_patch.float())
-        k_fft = torch.fft.rfft2(k_patch.float())
+        # Convert to FP32 before FFT to prevent FP16 underflow
+        q_patch = q_patch.float()
+        k_patch = k_patch.float()
+        # Disable autocast for FFT operations to prevent FP16 instability
+        with torch.amp.autocast(device_type='cuda', enabled=False):
+            q_fft = torch.fft.rfft2(q_patch)
+            k_fft = torch.fft.rfft2(k_patch)
 
-        out = q_fft * k_fft
-        out = torch.fft.irfft2(out, s=(self.patch_size, self.patch_size))
+            out = q_fft * k_fft
+            out = torch.fft.irfft2(out, s=(self.patch_size, self.patch_size))
         out = rearrange(
             out,
             "b c h w patch1 patch2 -> b c (h patch1) (w patch2)",

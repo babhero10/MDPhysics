@@ -137,6 +137,16 @@ def train_one_epoch(
             depth = depth.to(device)
         batch_size = blur.size(0)
 
+        # Sanity check: verify inputs are finite
+        if not torch.isfinite(blur).all():
+            import logging
+            logging.getLogger(__name__).warning("NaN/Inf detected in input images, skipping batch")
+            continue
+        if depth is not None and not torch.isfinite(depth).all():
+            import logging
+            logging.getLogger(__name__).warning("NaN/Inf detected in depth maps, skipping batch")
+            continue
+
         optimizer.zero_grad()
 
         # Construct targets dictionary
@@ -145,6 +155,22 @@ def train_one_epoch(
         with torch.amp.autocast(device_type):  # Dynamic FP16 forward
             pred = model(blur, depth=depth)
             loss, loss_dict = criterion(pred, targets)
+
+        # CRITICAL: Check for NaN/Inf in loss BEFORE backward pass
+        if not torch.isfinite(loss):
+            import logging
+            logging.getLogger(__name__).error(
+                f"Non-finite loss detected: {loss.item()}, skipping batch"
+            )
+            optimizer.zero_grad()
+            continue
+
+        # Check loss components for debugging
+        if any(not torch.isfinite(v) for v in loss_dict.values()):
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Non-finite values in loss components: {loss_dict}"
+            )
 
         # scale gradients
         scaler.scale(loss).backward()
@@ -157,10 +183,16 @@ def train_one_epoch(
         scaler.step(optimizer)
         scaler.update()
 
-        # Monitor for scaler instability
-        if scaler.get_scale() < 1:
+        # Enhanced scaler monitoring (should stay at ~65536 for stable training)
+        current_scale = scaler.get_scale()
+        if current_scale < 16384:  # Warning threshold (1/4 of normal)
             import logging
-            logging.getLogger(__name__).warning(f"Scaler scale very low: {scaler.get_scale()}")
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️  AMP scaler dropping: {current_scale:.0f} (normal: 65536)")
+            logger.warning("This indicates FP16 underflow - model may be unstable")
+            if current_scale < 1024:  # Critical threshold
+                logger.error(f"🔴 Scaler critically low: {current_scale:.0f}")
+                logger.error("Consider: (1) Reduce LR, (2) Check for NaN, (3) Disable AMP")
 
         # Accumulate losses (weighted by batch size)
         for k, v in loss_dict.items():
