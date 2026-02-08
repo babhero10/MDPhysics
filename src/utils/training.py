@@ -3,7 +3,7 @@ from hydra.utils import instantiate
 from pathlib import Path
 from omegaconf import OmegaConf
 from tqdm import tqdm
-
+import logging
 
 class CheckpointManager:
     def __init__(
@@ -115,7 +115,6 @@ def train_one_epoch(
     optimizer,
     criterion,
     device,
-    scaler,
     metrics=None,
     grad_clip_norm=None,
 ):
@@ -139,11 +138,9 @@ def train_one_epoch(
 
         # Sanity check: verify inputs are finite
         if not torch.isfinite(blur).all():
-            import logging
             logging.getLogger(__name__).warning("NaN/Inf detected in input images, skipping batch")
             continue
         if depth is not None and not torch.isfinite(depth).all():
-            import logging
             logging.getLogger(__name__).warning("NaN/Inf detected in depth maps, skipping batch")
             continue
 
@@ -152,7 +149,8 @@ def train_one_epoch(
         # Construct targets dictionary
         targets = {"sharp_image": sharp}
 
-        with torch.amp.autocast(device_type):  # Dynamic FP16 forward
+        # BF16 autocast: same exponent range as FP32, no overflow/underflow issues
+        with torch.amp.autocast(device_type, dtype=torch.bfloat16):
             pred = model(blur, depth=depth)
             loss, loss_dict = criterion(pred, targets)
 
@@ -165,34 +163,13 @@ def train_one_epoch(
             optimizer.zero_grad()
             continue
 
-        # Check loss components for debugging
-        if any(not torch.isfinite(v) for v in loss_dict.values()):
-            import logging
-            logging.getLogger(__name__).warning(
-                f"Non-finite values in loss components: {loss_dict}"
-            )
-
-        # scale gradients
-        scaler.scale(loss).backward()
+        loss.backward()
 
         # Gradient clipping to prevent exploding gradients
         if grad_clip_norm is not None:
-            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
 
-        scaler.step(optimizer)
-        scaler.update()
-
-        # Enhanced scaler monitoring (should stay at ~65536 for stable training)
-        current_scale = scaler.get_scale()
-        if current_scale < 16384:  # Warning threshold (1/4 of normal)
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"⚠️  AMP scaler dropping: {current_scale:.0f} (normal: 65536)")
-            logger.warning("This indicates FP16 underflow - model may be unstable")
-            if current_scale < 1024:  # Critical threshold
-                logger.error(f"🔴 Scaler critically low: {current_scale:.0f}")
-                logger.error("Consider: (1) Reduce LR, (2) Check for NaN, (3) Disable AMP")
+        optimizer.step()
 
         # Accumulate losses (weighted by batch size)
         for k, v in loss_dict.items():
@@ -235,7 +212,7 @@ def validate(model, val_loader, criterion, device, metrics=None):
 
         targets = {"sharp_image": sharp}
 
-        with torch.amp.autocast(device_type):
+        with torch.amp.autocast(device_type, dtype=torch.bfloat16):
             pred = model(blur, depth=depth)
             loss, loss_dict = criterion(pred, targets)
 

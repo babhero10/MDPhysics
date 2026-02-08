@@ -90,9 +90,7 @@ def main(cfg: DictConfig):
         min_delta=cfg.train.checkpoint.min_delta,
     )
 
-    # Optimization
-    scaler_device = "cuda" if "cuda" in cfg.device else "cpu"
-    scaler = torch.amp.GradScaler(scaler_device)
+    # BF16 mixed precision (no GradScaler needed - bf16 has fp32 exponent range)
 
     # Handle resume from checkpoint
     start_epoch = cfg.train.get("start_epoch", 0)
@@ -113,8 +111,7 @@ def main(cfg: DictConfig):
             optimizer,
             criterion,
             device,
-            scaler,
-            metrics,
+            metrics=metrics,
             grad_clip_norm=cfg.train.get("grad_clip_norm"),
         )
 
@@ -169,6 +166,10 @@ def main(cfg: DictConfig):
         logger.info(
             f"Epoch {epoch + 1}: train_loss={train_total:.4f}, val_loss={val_total:.4f}, {metrics_str}"
         )
+
+        # Log learning rate
+        current_lr = optimizer.param_groups[0]["lr"]
+        writer.add_scalar("train/lr", current_lr, epoch + 1)
 
         # step scheduler if needed
         scheduler.step()

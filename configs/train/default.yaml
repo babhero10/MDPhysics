@@ -1,6 +1,6 @@
-lr: 0.0002  # Reduced from 0.001 for better stability with transformers + FFT
+lr: 0.001  # Restored to original MDT setting (0.001) for proper convergence
 weight_decay: 0.001
-epochs: 500
+epochs: 2300  # ~300k iterations to match original MDT (was 500, need 2282 total)
 batch_size: 16
 batch_size_val: 1
 
@@ -23,7 +23,7 @@ optimizer:
 scheduler:
   _target_: utils.schedulers.CosineAnnealingWarmupLR
   T_max: ${train.epochs}
-  eta_min: 0.000001      # 1e-6 minimum learning rate
+  eta_min: 0.0000001     # 1e-7 to match original MDT (was 1e-6)
   warmup_epochs: 10      # Linear warmup for first 10 epochs
   warmup_lr: 0.000001    # Start warmup from 1e-6
 
@@ -32,7 +32,7 @@ grad_clip_norm: 0.5
 
 checkpoint:
   dir: ${hydra:runtime.output_dir}/checkpoints
-  patience: 30  # Increased patience for 300 epochs (was 10)
+  patience: 100  # Increased patience for 2300 epochs (was 30)
   min_delta: 0.0001
   monitor: psnr
   mode: max
